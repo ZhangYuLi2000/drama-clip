@@ -1,0 +1,36 @@
+{
+  "name": "drama-workbench",
+  "version": "0.1.0",
+  "description": "短剧工作台 · 本地高光切片与智能混剪（交互原型，mock 数据）",
+  "main": "./out/main/index.js",
+  "author": "raolong",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node scripts/dev-electron.cjs dev --watch",
+    "build": "electron-vite build",
+    "preview": "node scripts/dev-electron.cjs preview",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.5.1",
+    "antd": "^5.21.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "electron": "^33.2.0",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}
