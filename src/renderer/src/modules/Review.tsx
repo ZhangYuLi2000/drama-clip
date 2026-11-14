@@ -223,10 +223,12 @@ export default function Review(): ReactElement {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (e.isComposing || e.keyCode === 229) return
       const s = useStore.getState()
       if (s.screen !== 'episodes' || s.ep.review === null || s.panel) return
-      const tag = ((e.target as HTMLElement | null)?.tagName ?? '').toLowerCase()
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return
+      const target = e.target as HTMLElement | null
+      const tag = (target?.tagName ?? '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target?.getAttribute('role') === 'slider') return
       if (e.key === ' ') {
         e.preventDefault()
         s.togglePlay()
@@ -381,7 +383,9 @@ export default function Review(): ReactElement {
               key={ep.id}
               ref={videoRef}
               src={mediaUrl(ep.file)}
-              preload="auto"
+              width={320}
+              height={569}
+              preload="metadata"
               playsInline
               style={{
                 position: 'absolute',
@@ -469,11 +473,27 @@ export default function Review(): ReactElement {
                 className="dw-tl"
                 ref={tlRef}
                 role="slider"
+                tabIndex={0}
                 aria-label="全集时间轴，点击或拖动定位"
                 aria-valuemin={0}
                 aria-valuemax={Math.round(dur)}
                 aria-valuenow={Math.round(time)}
                 aria-valuetext={fmt(time)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowLeft') {
+                    e.preventDefault()
+                    seekTo(Math.max(0, time - (e.shiftKey ? 5 : 1)))
+                  } else if (e.key === 'ArrowRight') {
+                    e.preventDefault()
+                    seekTo(Math.min(dur, time + (e.shiftKey ? 5 : 1)))
+                  } else if (e.key === 'Home') {
+                    e.preventDefault()
+                    seekTo(0)
+                  } else if (e.key === 'End') {
+                    e.preventDefault()
+                    seekTo(dur)
+                  }
+                }}
                 onPointerDown={onTlPointerDown}
                 onPointerMove={onTlPointerMove}
                 onPointerUp={onTlPointerUp}

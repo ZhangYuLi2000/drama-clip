@@ -265,7 +265,9 @@ function PreviewDrawer({ open, onClose }: { open: boolean; onClose: () => void }
                   key={h.clip}
                   ref={videoRef}
                   src={mediaUrl(h.clip!)}
-                  preload="auto"
+                  width={260}
+                  height={462}
+                  preload="metadata"
                   playsInline
                   muted={muted}
                   style={{

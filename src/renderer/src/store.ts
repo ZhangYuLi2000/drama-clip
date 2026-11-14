@@ -281,6 +281,19 @@ function snapToShot(t: number, shots: number[], segments: AsrSegment[]): number 
   return best
 }
 
+function withViewTransition(fn: () => void): void {
+  if (
+    typeof document !== 'undefined' &&
+    'startViewTransition' in document &&
+    typeof document.startViewTransition === 'function' &&
+    !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
+    document.startViewTransition(fn)
+  } else {
+    fn()
+  }
+}
+
 export const useStore = create<Store>()((set, get) => {
   function stopPlay(): void {
     if (get().ep.playing) set((s) => ({ ep: { ...s.ep, playing: false } }))
@@ -346,10 +359,12 @@ export const useStore = create<Store>()((set, get) => {
     goto: (screen: Screen, params?: object) => {
       stopPlay()
       const key = SLICE_KEY[screen]
-      set((s) => {
-        if (!key) return { screen, panel: null }
-        const slice = params ? { ...s[key], ...params } : s[key]
-        return { screen, panel: null, [key]: slice } as Partial<Store>
+      withViewTransition(() => {
+        set((s) => {
+          if (!key) return { screen, panel: null }
+          const slice = params ? { ...s[key], ...params } : s[key]
+          return { screen, panel: null, [key]: slice } as Partial<Store>
+        })
       })
     },
     openPanel: (p) => {
@@ -368,15 +383,19 @@ export const useStore = create<Store>()((set, get) => {
     },
     openDrama: (d) => {
       stopPlay()
-      set((s) => ({
-        ep: { ...s.ep, page: 'eps', drama: d, review: null, sel: [], filter: 'all', q: '' }
-      }))
+      withViewTransition(() => {
+        set((s) => ({
+          ep: { ...s.ep, page: 'eps', drama: d, review: null, sel: [], filter: 'all', q: '' }
+        }))
+      })
     },
     backToTasks: () => {
       stopPlay()
-      set((s) => ({
-        ep: { ...s.ep, page: 'tasks', review: null, sel: [], filter: 'all', q: '' }
-      }))
+      withViewTransition(() => {
+        set((s) => ({
+          ep: { ...s.ep, page: 'tasks', review: null, sel: [], filter: 'all', q: '' }
+        }))
+      })
     },
     setEpQ: (q) => set((s) => ({ ep: { ...s.ep, q } })),
     setEpFilter: (f) => set((s) => ({ ep: { ...s.ep, filter: f, sel: [] } })),
@@ -410,14 +429,18 @@ export const useStore = create<Store>()((set, get) => {
     enterReview: (n) => {
       stopPlay()
       const list = loadedCands(get().ep.drama, n)
-      set((st) => ({
-        cands: list,
-        ep: { ...st.ep, review: n, candId: list[0]?.id ?? '', pendingOnly: false, pendingSeek: null }
-      }))
+      withViewTransition(() => {
+        set((st) => ({
+          cands: list,
+          ep: { ...st.ep, review: n, candId: list[0]?.id ?? '', pendingOnly: false, pendingSeek: null }
+        }))
+      })
     },
     reviewBack: () => {
       stopPlay()
-      set((s) => ({ ep: { ...s.ep, review: null } }))
+      withViewTransition(() => {
+        set((s) => ({ ep: { ...s.ep, review: null } }))
+      })
     },
     seekReview: (n, t) => {
       stopPlay()
@@ -601,15 +624,19 @@ export const useStore = create<Store>()((set, get) => {
 
     setHlDrama: (d) => set((s) => ({ hl: { ...s.hl, drama: d, ep: 'all' } })),
     openHl: (d) =>
-      set((s) => ({
-        screen: 'highlights',
-        panel: null,
-        hl: { ...s.hl, page: 'detail', drama: d, ep: 'all', q: '', tags: [] }
-      })),
+      withViewTransition(() => {
+        set((s) => ({
+          screen: 'highlights',
+          panel: null,
+          hl: { ...s.hl, page: 'detail', drama: d, ep: 'all', q: '', tags: [] }
+        }))
+      }),
     backHl: () =>
-      set((s) => ({
-        hl: { ...s.hl, page: 'tasks', drama: 'all', ep: 'all', q: '', tags: [] }
-      })),
+      withViewTransition(() => {
+        set((s) => ({
+          hl: { ...s.hl, page: 'tasks', drama: 'all', ep: 'all', q: '', tags: [] }
+        }))
+      }),
     setHlEp: (ep) => set((s) => ({ hl: { ...s.hl, ep } })),
     setHlQ: (q) => set((s) => ({ hl: { ...s.hl, q } })),
     setHlSort: (sort) => set((s) => ({ hl: { ...s.hl, sort } })),
@@ -657,12 +684,17 @@ export const useStore = create<Store>()((set, get) => {
     setMixStructure: (structure) => set((s) => ({ mix: { ...s.mix, structure } })),
     setMixQ: (q) => set((s) => ({ mix: { ...s.mix, q } })),
     openMix: (d) =>
-      set((s) => ({
-        screen: 'mix',
-        panel: null,
-        mix: { ...s.mix, page: 'detail', drama: d, q: '' }
-      })),
-    backMix: () => set((s) => ({ mix: { ...s.mix, page: 'tasks', q: '' } })),
+      withViewTransition(() => {
+        set((s) => ({
+          screen: 'mix',
+          panel: null,
+          mix: { ...s.mix, page: 'detail', drama: d, q: '' }
+        }))
+      }),
+    backMix: () =>
+      withViewTransition(() => {
+        set((s) => ({ mix: { ...s.mix, page: 'tasks', q: '' } }))
+      }),
     setMixPrompt: (p) => set((s) => ({ mix: { ...s.mix, prompt: p } })),
     setMixTarget: (t) => set((s) => ({ mix: { ...s.mix, target: t } })),
     setMixRatio: (r) => set((s) => ({ mix: { ...s.mix, ratio: r } })),

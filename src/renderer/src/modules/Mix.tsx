@@ -286,7 +286,13 @@ function MixDetail(): ReactElement {
             {meta.desc}
           </p>
           <div className="dw-field-label">一句话描述想要的成片</div>
-          <Input.TextArea rows={4} value={prompt} onChange={(e) => setMixPrompt(e.target.value)} style={{ marginBottom: 12 }} />
+          <Input.TextArea
+            rows={4}
+            className="dw-auto-textarea"
+            value={prompt}
+            onChange={(e) => setMixPrompt(e.target.value)}
+            style={{ marginBottom: 12 }}
+          />
           <Space style={{ marginBottom: 12 }} wrap>
             <span className="dw-sub">目标时长</span>
             <Select

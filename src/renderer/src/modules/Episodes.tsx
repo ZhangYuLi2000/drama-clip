@@ -58,6 +58,10 @@ function Thumb({ e }: { e: Episode }): ReactElement {
     <img
       src={mediaUrl(e.thumb)}
       alt={`第 ${e.n} 集缩略图`}
+      width={40}
+      height={71}
+      loading="lazy"
+      decoding="async"
       style={{ width: 40, height: 71, objectFit: 'cover', borderRadius: 4, display: 'block' }}
       onError={() => setErr(true)}
     />

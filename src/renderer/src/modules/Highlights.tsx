@@ -169,32 +169,34 @@ function HlDetail(): ReactElement {
               size="small"
               styles={{ body: { padding: 12 } }}
               cover={
-                <div
-                  className="dw-thumb"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`预览 ${h.title}`}
-                  onClick={() => openPreview(h.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') openPreview(h.id)
-                  }}
-                >
-                  {h.clipThumb && (
-                    <img
-                      src={mediaUrl(h.clipThumb)}
-                      alt=""
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none'
-                      }}
-                    />
-                  )}
-                  <span className="dw-score">{h.score}</span>
-                  {!h.clipThumb && <span className="dw-thumb-pending">切片生成中…</span>}
-                  <span className="dw-thumb-scene">{h.scene}</span>
-                  <span className="dw-dur">{h.dur.toFixed(1)}s</span>
-                  <span className="dw-thumb-play">
-                    <CaretRightOutlined />
-                  </span>
+                <div className="dw-thumb">
+                  <button
+                    type="button"
+                    className="dw-thumb-trigger"
+                    aria-label={`预览 ${h.title}`}
+                    onClick={() => openPreview(h.id)}
+                  >
+                    {h.clipThumb && (
+                      <img
+                        src={mediaUrl(h.clipThumb)}
+                        alt=""
+                        width={250}
+                        height={132}
+                        loading="lazy"
+                        decoding="async"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    )}
+                    <span className="dw-score">{h.score}</span>
+                    {!h.clipThumb && <span className="dw-thumb-pending">切片生成中…</span>}
+                    <span className="dw-thumb-scene">{h.scene}</span>
+                    <span className="dw-dur">{h.dur.toFixed(1)}s</span>
+                    <span className="dw-thumb-play" aria-hidden="true">
+                      <CaretRightOutlined />
+                    </span>
+                  </button>
                   <Popconfirm
                     title="删除这条高光？"
                     description="切片文件将被删除，候选回到待审"
@@ -209,7 +211,6 @@ function HlDetail(): ReactElement {
                       className="dw-thumb-del"
                       icon={<DeleteOutlined />}
                       aria-label={`删除 ${h.title}`}
-                      onClick={(e) => e.stopPropagation()}
                     />
                   </Popconfirm>
                 </div>
