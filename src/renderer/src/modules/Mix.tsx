@@ -11,10 +11,13 @@ import {
   ScissorOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons'
-import { Button, Card, Checkbox, Empty, Input, Progress, Result, Select, Space, Spin, Table, Tag } from 'antd'
+import { Button, Card, Empty, Input, Progress, Result, Segmented, Select, Space, Spin, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { DRAMAS, ROLES, ROLE_CAP, ROLE_COLOR, ROLE_WHY, dramaById } from '../mock/data'
-import { basketDur, toast, useStore } from '../store'
+import type { MixStructure } from '../../../shared/types'
+import { STRUCTURES } from '../../../shared/types'
+import { findDrama, useHighlights, useLibrary } from '../library'
+import { ROLE_COLOR, ROLE_WHY } from '../mock/data'
+import { basketDurOf, useStore } from '../store'
 
 const ROLE_HEX: Record<string, string> = {
   钩子: '#f5222d',
@@ -27,8 +30,9 @@ const ROLE_HEX: Record<string, string> = {
 
 function Basket(): ReactElement {
   const basket = useStore((s) => s.basket)
-  const hls = useStore((s) => s.hls)
-  const total = useStore(basketDur)
+  const hls = useHighlights()
+  const dramas = useLibrary((s) => s.dramas)
+  const total = basketDurOf(hls, basket)
   const basketMove = useStore((s) => s.basketMove)
   const basketRemove = useStore((s) => s.basketRemove)
   const basketClear = useStore((s) => s.basketClear)
@@ -52,14 +56,14 @@ function Basket(): ReactElement {
       {basket.map((id, idx) => {
         const h = hls.find((x) => x.id === id)
         if (!h) return null
-        const d = dramaById(h.d)
+        const d = findDrama(dramas, h.dramaId)
         return (
           <div className="dw-basket-item" key={id}>
             <span className="dw-basket-idx">{idx + 1}</span>
             <span className="dw-basket-main">
               <span className="dw-basket-title">{h.title}</span>
               <span className="dw-basket-src">
-                《{d.title}》第 {h.ep} 集 · {h.dur.toFixed(1)}s · 评分 {h.score}
+                《{d?.title ?? '?'}》第 {h.ep} 集 · {h.dur.toFixed(1)}s · 评分 {h.score}
               </span>
             </span>
             <Space size={2}>
@@ -92,9 +96,8 @@ function MixOut(): ReactElement {
   const result = useStore((s) => s.mix.result)
   const target = useStore((s) => s.mix.target)
   const ratio = useStore((s) => s.mix.ratio)
-  const bgm = useStore((s) => s.mix.bgm)
-  const subs = useStore((s) => s.mix.subs)
-  const drama = useStore((s) => s.mix.drama)
+  const dramas = useLibrary((s) => s.dramas)
+  const openOutput = useLibrary((s) => s.openOutput)
   const clipMove = useStore((s) => s.clipMove)
   const clipRemove = useStore((s) => s.clipRemove)
   const mixReset = useStore((s) => s.mixReset)
@@ -137,9 +140,14 @@ function MixOut(): ReactElement {
         <Result
           status="success"
           title="渲染完成"
-          subTitle={`E:\\drama_work\\renders\\${dramaById(drama).title}_高光混剪_${target}s.mp4`}
+          subTitle={result.output || '输出文件已生成'}
           extra={[
-            <Button key="dir" icon={<FolderOutlined />} onClick={() => toast('原型演示：实际版本将打开资源管理器定位到输出文件', 'info')}>
+            <Button
+              key="dir"
+              icon={<FolderOutlined />}
+              disabled={!result.output}
+              onClick={() => result.output && openOutput(result.output)}
+            >
               打开输出目录
             </Button>,
             <Button key="again" type="primary" icon={<PlusOutlined />} onClick={mixReset}>
@@ -148,10 +156,7 @@ function MixOut(): ReactElement {
           ]}
         >
           <div className="dw-sub" style={{ textAlign: 'center' }}>
-            时长 {total}s · {res} · H.264{subs ? ' · 字幕已烧录' : ''}
-            {bgm ? ' · BGM 已混音' : ''}
-            <br />
-            本次 AI 成本 ¥0.06（编排叙事 LLM 调用）
+            时长 {total}s · {res} · H.264 · 帧精确切片拼接
           </div>
         </Result>
       </Card>
@@ -182,7 +187,7 @@ function MixOut(): ReactElement {
                 {c.hl.title} · {c.dur.toFixed(1)}s
               </span>
               <span className="dw-clip-why">
-                {c.why} · 来源《{dramaById(c.hl.d).title}》第 {c.hl.ep} 集
+                {c.why} · 来源《{findDrama(dramas, c.hl.dramaId)?.title ?? '?'}》第 {c.hl.ep} 集
               </span>
             </span>
             <Space size={2}>
@@ -208,23 +213,6 @@ function MixOut(): ReactElement {
             </span>
           ))}
         </div>
-        <div className="dw-mix-track">
-          <span>字幕轨</span>
-          <span className="dw-track-bar">
-            <span className="dw-track-fill" style={{ right: '40%' }} />
-            {result.clips.map((_, i) => (
-              <span key={i} className="dw-track-tick" style={{ left: `${(i / result.clips.length) * 100}%` }} />
-            ))}
-          </span>
-        </div>
-        {bgm && (
-          <div className="dw-mix-track">
-            <span>BGM 轨</span>
-            <span className="dw-track-bar">
-              <span className="dw-track-fill" style={{ right: 0 }} />
-            </span>
-          </div>
-        )}
       </Card>
       {result.status === 'ready' ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
@@ -247,21 +235,21 @@ function MixOut(): ReactElement {
 
 function MixDetail(): ReactElement {
   const drama = useStore((s) => s.mix.drama)
+  const structure = useStore((s) => s.mix.structure)
   const prompt = useStore((s) => s.mix.prompt)
   const target = useStore((s) => s.mix.target)
   const ratio = useStore((s) => s.mix.ratio)
-  const bgm = useStore((s) => s.mix.bgm)
-  const subs = useStore((s) => s.mix.subs)
   const basketN = useStore((s) => s.basket.length)
+  const dramas = useLibrary((s) => s.dramas)
   const setMixDrama = useStore((s) => s.setMixDrama)
+  const setMixStructure = useStore((s) => s.setMixStructure)
   const backMix = useStore((s) => s.backMix)
   const setMixPrompt = useStore((s) => s.setMixPrompt)
   const setMixTarget = useStore((s) => s.setMixTarget)
   const setMixRatio = useStore((s) => s.setMixRatio)
-  const setMixBgm = useStore((s) => s.setMixBgm)
-  const setMixSubs = useStore((s) => s.setMixSubs)
   const smartPick = useStore((s) => s.smartPick)
   const generate = useStore((s) => s.generate)
+  const meta = STRUCTURES[structure]
 
   return (
     <div>
@@ -270,7 +258,7 @@ function MixDetail(): ReactElement {
           返回任务列表
         </Button>
         <div>
-          <h2 className="dw-page-title">{dramaById(drama).title}</h2>
+          <h2 className="dw-page-title">{findDrama(dramas, drama)?.title ?? '智能混剪'}</h2>
           <p className="dw-page-desc">素材篮选材 → AI 叙事排序 → 时间轴微调 → FFmpeg 渲染出片</p>
         </div>
       </div>
@@ -278,11 +266,25 @@ function MixDetail(): ReactElement {
         <Card size="small" title="创作需求">
           <div className="dw-field-label">素材范围（AI 智能选材用）</div>
           <Select
-            value={drama}
+            value={drama || undefined}
             onChange={setMixDrama}
+            placeholder="选择短剧"
             style={{ width: '100%', marginBottom: 12 }}
-            options={DRAMAS.map((d) => ({ value: d.id, label: d.title }))}
+            options={dramas.map((d) => ({ value: d.id, label: d.title }))}
           />
+          <div className="dw-field-label">叙事结构</div>
+          <Segmented
+            value={structure}
+            onChange={(v) => setMixStructure(v as MixStructure)}
+            style={{ marginBottom: 4 }}
+            options={(Object.keys(STRUCTURES) as MixStructure[]).map((k) => ({
+              value: k,
+              label: STRUCTURES[k].name
+            }))}
+          />
+          <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
+            {meta.desc}
+          </p>
           <div className="dw-field-label">一句话描述想要的成片</div>
           <Input.TextArea rows={4} value={prompt} onChange={(e) => setMixPrompt(e.target.value)} style={{ marginBottom: 12 }} />
           <Space style={{ marginBottom: 12 }} wrap>
@@ -308,14 +310,6 @@ function MixDetail(): ReactElement {
               ]}
             />
           </Space>
-          <Space style={{ marginBottom: 12 }}>
-            <Checkbox checked={bgm} onChange={(e) => setMixBgm(e.target.checked)}>
-              自动配 BGM
-            </Checkbox>
-            <Checkbox checked={subs} onChange={(e) => setMixSubs(e.target.checked)}>
-              烧录字幕
-            </Checkbox>
-          </Space>
           <div className="dw-field-label">素材篮（高光管理加入 · AI 按此顺序编排叙事）</div>
           <Basket />
           <div className="dw-mix-actions">
@@ -328,12 +322,12 @@ function MixDetail(): ReactElement {
           </div>
         </Card>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-          <Card size="small" title="叙事策略" extra={<span className="dw-sub">AI 按短剧节奏编排 · 每角色有时长上限</span>} styles={{ body: { padding: '6px 16px' } }}>
-            {ROLES.map((r) => (
+          <Card size="small" title={`叙事策略 · ${meta.name}`} extra={<span className="dw-sub">每角色有时长上限</span>} styles={{ body: { padding: '6px 16px' } }}>
+            {meta.roles.map((r) => (
               <div className="dw-role-row" key={r}>
                 <Tag color={ROLE_COLOR[r]}>{r}</Tag>
-                <span className="dw-role-why">{ROLE_WHY[r]}</span>
-                <span className="dw-role-cap">≤ {ROLE_CAP[r]}s</span>
+                <span className="dw-role-why">{ROLE_WHY[r] ?? ''}</span>
+                <span className="dw-role-cap">≤ {meta.caps[r] ?? 10}s</span>
               </div>
             ))}
           </Card>
@@ -353,13 +347,16 @@ interface MixTask {
 
 function MixTasks(): ReactElement {
   const q = useStore((s) => s.mix.q)
-  const hls = useStore((s) => s.hls)
+  const hls = useHighlights()
+  const dramas = useLibrary((s) => s.dramas)
   const setMixQ = useStore((s) => s.setMixQ)
   const openMix = useStore((s) => s.openMix)
-  const rows: MixTask[] = DRAMAS.filter((d) => !q.trim() || d.title.includes(q.trim())).map((d) => {
-    const mine = hls.filter((h) => h.d === d.id)
-    return { id: d.id, title: d.title, n: mine.length, dur: mine.reduce((n, h) => n + h.dur, 0) }
-  })
+  const rows: MixTask[] = dramas
+    .filter((d) => !q.trim() || d.title.includes(q.trim()))
+    .map((d) => {
+      const mine = hls.filter((h) => h.dramaId === d.id)
+      return { id: d.id, title: d.title, n: mine.length, dur: mine.reduce((n, h) => n + h.dur, 0) }
+    })
   const columns: ColumnsType<MixTask> = [
     { title: '短剧', dataIndex: 'title' },
     { title: '可用高光', width: 120, render: (_, r) => (r.n > 0 ? `${r.n} 条` : <span className="dw-sub">暂无</span>) },

@@ -1,7 +1,7 @@
 {
   "name": "drama-workbench",
   "version": "0.1.0",
-  "description": "短剧工作台 · 本地高光切片与智能混剪（交互原型，mock 数据）",
+  "description": "短剧工作台 · 本地高光切片与智能混剪（本地媒体库 + bcut 真实转写）",
   "main": "./out/main/index.js",
   "author": "raolong",
   "license": "MIT",
@@ -16,8 +16,12 @@
   "dependencies": {
     "@ant-design/icons": "^5.5.1",
     "antd": "^5.21.6",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
+    "isomorphic-git": "^1.44.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "ssh2": "^1.17.0",
     "zustand": "^5.0.1"
   },
   "devDependencies": {
@@ -32,5 +36,7 @@
   },
   "allowScripts": {
     "electron@33.4.11": true
-  }
+  },
+  "keywords": [],
+  "type": "commonjs"
 }

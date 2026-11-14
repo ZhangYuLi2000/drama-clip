@@ -1,22 +1,32 @@
 import type { ReactElement } from 'react'
 import { CheckCircleOutlined, FolderOpenOutlined, StarOutlined, VideoCameraOutlined } from '@ant-design/icons'
 import { Card, Col, Row } from 'antd'
-import { DRAMAS } from '../mock/data'
-import { totalAnalyzed, totalPending, useStore } from '../store'
+import { useHighlights, useLibrary } from '../library'
+import { totalAnalyzed, totalPending, toast, useStore } from '../store'
 
 export default function Home(): ReactElement {
-  const hls = useStore((s) => s.hls)
+  const hls = useHighlights()
   const pending = useStore(totalPending)
   const analyzed = useStore(totalAnalyzed)
   const goto = useStore((s) => s.goto)
+  const dramas = useLibrary((s) => s.dramas)
 
-  const totalEps = DRAMAS.reduce((n, d) => n + d.eps, 0)
+  const totalEps = dramas.reduce((n, d) => n + d.episodes.length, 0)
+
+  const openFirstPending = (): void => {
+    const target = dramas.find((d) => d.episodes.some((e) => e.pending > 0))
+    if (target) {
+      goto('episodes', { page: 'eps', drama: target.id, filter: 'review', review: null, q: '', sel: [] })
+    } else {
+      toast('当前没有待审核候选。AI 分析上线后，候选会出现在这里', 'info')
+    }
+  }
 
   const stats = [
     {
       label: '短剧',
-      value: DRAMAS.length,
-      sub: '部 · 已登记',
+      value: dramas.length,
+      sub: '部 · 已导入',
       icon: <FolderOpenOutlined />,
       bg: '#e6f4ff',
       color: '#1677ff',
@@ -25,7 +35,7 @@ export default function Home(): ReactElement {
     {
       label: '剧集',
       value: totalEps,
-      sub: `集 · 已分析 ${analyzed} 集`,
+      sub: `集 · 已转写 ${analyzed} 集`,
       icon: <VideoCameraOutlined />,
       bg: '#e6fffb',
       color: '#13c2c2',
@@ -38,7 +48,7 @@ export default function Home(): ReactElement {
       icon: <CheckCircleOutlined />,
       bg: '#fff7e6',
       color: '#fa8c16',
-      act: () => goto('episodes', { page: 'eps', drama: 'd1', filter: 'review', review: null, q: '', sel: [] })
+      act: openFirstPending
     },
     {
       label: '高光资产',

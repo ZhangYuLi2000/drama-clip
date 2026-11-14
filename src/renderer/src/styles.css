@@ -190,24 +190,45 @@ body {
   color: #8a919f;
   font-size: 11px;
 }
-.dw-job {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px dashed #eef0f3;
+.dw-log {
+  max-height: 440px;
+  overflow: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   font-size: 12px;
 }
-.dw-job:last-child {
+.dw-log-line {
+  display: flex;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px dashed #f0f1f4;
+}
+.dw-log-line:last-child {
   border-bottom: none;
 }
-.dw-job-name {
-  flex: 1;
-  min-width: 0;
+.dw-log-time {
+  flex: none;
+  color: #8a919f;
+  font-variant-numeric: tabular-nums;
+}
+.dw-log-msg {
+  word-break: break-all;
   color: #4b5563;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.dw-log-error .dw-log-msg {
+  color: #f5222d;
+}
+.dw-log-warn .dw-log-msg {
+  color: #d48806;
+}
+.dw-thumb-ph {
+  width: 40px;
+  height: 71px;
+  border-radius: 4px;
+  background: #f0f1f4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #c3c8d2;
 }
 .dw-filters .ant-tag {
   margin-inline-end: 0;
@@ -218,11 +239,6 @@ body {
   margin-left: 4px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-.dw-job-pct {
-  color: #8a919f;
-  font-size: 11px;
-  white-space: nowrap;
 }
 
 /* ---------- 评分徽章 ---------- */
@@ -303,7 +319,7 @@ body {
 .dw-player {
   position: relative;
   width: 100%;
-  max-width: 280px;
+  max-width: 320px;
   aspect-ratio: 9 / 16;
   margin: 0 auto;
   border-radius: 12px;
@@ -369,6 +385,8 @@ body {
   position: relative;
   height: 40px;
   margin-top: 12px;
+  cursor: pointer;
+  touch-action: none;
 }
 .dw-tl-track {
   position: absolute;
@@ -419,6 +437,31 @@ body {
   width: 2px;
   background: #f5222d;
   border-radius: 1px;
+  pointer-events: none;
+}
+.dw-tl-tip {
+  position: absolute;
+  top: -20px;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #fff;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.dw-buffering {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
 .dw-tl-labels {
   display: flex;
@@ -579,9 +622,28 @@ body {
   width: 100%;
   height: 132px;
   cursor: pointer;
-  color: #4b5563;
+  color: #cbd2e0;
   font-size: 12px;
   overflow: hidden;
+  background: linear-gradient(165deg, #2a3142, #10131a 70%);
+}
+.dw-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dw-thumb-pending {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #9aa3b5;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 1px 8px;
+  border-radius: 4px;
 }
 .dw-thumb-scene {
   position: absolute;
@@ -592,6 +654,8 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 .dw-thumb:focus-visible {
   outline: 2px solid #1677ff;

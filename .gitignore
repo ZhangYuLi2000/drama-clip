@@ -3,3 +3,9 @@ out
 dist
 *.log
 .DS_Store
+
+# 本地媒体与模型产物（含剧集内容，不入库）
+media-cache/
+*.mp4
+scripts/spike-out/
+scripts/diag-act1-raw.txt

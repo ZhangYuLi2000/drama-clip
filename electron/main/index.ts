@@ -1,5 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
 import path from 'path'
+import { initDb } from './db'
+import { registerIpc, registerMediaProtocol } from './ipc'
+import { repairMissingMedia } from './jobs'
+import { initSettings } from './settings'
 
 const devUrl = process.env['ELECTRON_RENDERER_URL']
 
@@ -9,6 +13,10 @@ app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
 }
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'dw-media', privileges: { stream: true, supportFetchAPI: true, bypassCSP: true } }
+])
 
 function loadRenderer(win: BrowserWindow): void {
   if (!app.isPackaged && devUrl) void win.loadURL(devUrl)
@@ -72,6 +80,11 @@ ipcMain.handle('select-directory', async () => {
 })
 
 app.whenReady().then(() => {
+  initDb()
+  initSettings()
+  registerMediaProtocol()
+  registerIpc()
+  repairMissingMedia()
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

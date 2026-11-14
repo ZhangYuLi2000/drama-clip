@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { ReactElement } from 'react'
 import {
   BellOutlined,
@@ -11,7 +12,7 @@ import {
 } from '@ant-design/icons'
 import { Avatar, Badge, Breadcrumb, Button, Input, Layout, Menu, Tooltip } from 'antd'
 import type { MenuProps } from 'antd'
-import { dramaById } from './mock/data'
+import { startLibrarySync, useHighlights, useLibrary } from './library'
 import { totalPending, toast, useStore } from './store'
 import type { Screen } from './store'
 import Home from './modules/Home'
@@ -53,6 +54,18 @@ export default function App(): ReactElement {
   const mixDrama = useStore((s) => s.mix.drama)
   const goto = useStore((s) => s.goto)
   const globalSearch = useStore((s) => s.globalSearch)
+  const running = useLibrary((s) => s.running)
+  const dramas = useLibrary((s) => s.dramas)
+  const epDramaTitle = dramas.find((x) => x.id === epDrama)?.title ?? ''
+  const hls = useHighlights()
+  const basket = useStore((s) => s.basket)
+
+  useEffect(() => startLibrarySync(), [])
+
+  useEffect(() => {
+    const valid = basket.filter((id) => hls.some((h) => h.id === id))
+    if (valid.length !== basket.length) useStore.setState({ basket: valid })
+  }, [hls, basket])
 
   const menuItems: MenuProps['items'] = [
     {
@@ -95,7 +108,7 @@ export default function App(): ReactElement {
           label: (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               任务队列
-              <Badge count={2} size="small" />
+              {running > 0 && <Badge count={running} size="small" />}
             </span>
           )
         },
@@ -132,17 +145,23 @@ export default function App(): ReactElement {
         ? [{ title: '剧集管理' }]
         : [
             crumbLink('剧集管理', () => goto('episodes', { page: 'tasks', review: null, q: '', filter: 'all', sel: [] })),
-            { title: dramaById(epDrama).title },
+            { title: epDramaTitle },
             ...(epReview !== null ? [{ title: `第 ${epReview} 集审核` }] : [])
           ]
       : screen === 'highlights'
         ? hlPage === 'tasks'
           ? [{ title: '高光管理' }]
-          : [crumbLink('高光管理', () => goto('highlights', { page: 'tasks', drama: 'all', ep: 'all', q: '', tags: [] })), { title: dramaById(hlDrama).title }]
+          : [
+              crumbLink('高光管理', () => goto('highlights', { page: 'tasks', drama: 'all', ep: 'all', q: '', tags: [] })),
+              { title: dramas.find((x) => x.id === hlDrama)?.title ?? '未知短剧' }
+            ]
         : screen === 'mix'
           ? mixPage === 'tasks'
             ? [{ title: '智能混剪' }]
-            : [crumbLink('智能混剪', () => goto('mix', { page: 'tasks', q: '' })), { title: dramaById(mixDrama).title }]
+            : [
+                crumbLink('智能混剪', () => goto('mix', { page: 'tasks', q: '' })),
+                { title: dramas.find((x) => x.id === mixDrama)?.title ?? '未知短剧' }
+              ]
           : [{ title: '工作台' }, { title: SCREEN_NAMES[screen] }]
 
   return (
@@ -184,7 +203,7 @@ export default function App(): ReactElement {
             onSearch={(v) => globalSearch(v)}
           />
           <Tooltip title="任务通知">
-            <Badge dot>
+            <Badge dot={running > 0}>
               <Button type="text" icon={<BellOutlined />} onClick={() => goto('queue')} aria-label="任务通知" />
             </Badge>
           </Tooltip>

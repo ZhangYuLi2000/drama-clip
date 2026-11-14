@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { ReactElement } from 'react'
 import {
   AppstoreOutlined,
@@ -14,9 +15,10 @@ import {
 import { Badge, Button, Card, Empty, Input, Popconfirm, Segmented, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useShallow } from 'zustand/react/shallow'
-import { DRAMAS, TAGSET, dramaById } from '../mock/data'
-import type { Highlight } from '../mock/data'
-import { filteredHls, hlEpOptions, useStore } from '../store'
+import { findDrama, mediaUrl, useHighlights, useLibrary } from '../library'
+import type { Highlight } from '../library'
+import { TAGSET } from '../mock/data'
+import { filterHls, hlEpOptions, useStore } from '../store'
 import type { HlSort } from '../store'
 
 function HlActions({ h }: { h: Highlight }): ReactElement {
@@ -47,16 +49,10 @@ function HlActions({ h }: { h: Highlight }): ReactElement {
 }
 
 function HlDetail(): ReactElement {
-  const drama = useStore((s) => s.hl.drama)
-  const ep = useStore((s) => s.hl.ep)
-  const tags = useStore((s) => s.hl.tags)
-  const q = useStore((s) => s.hl.q)
-  const sort = useStore((s) => s.hl.sort)
-  const view = useStore((s) => s.hl.view)
-  const hls = useStore((s) => s.hls)
+  const hl = useStore(useShallow((s) => s.hl))
+  const hls = useHighlights()
+  const dramas = useLibrary((s) => s.dramas)
   const basketN = useStore((s) => s.basket.length)
-  const list = useStore(useShallow(filteredHls))
-  const epOpts = useStore(useShallow(hlEpOptions))
   const setHlEp = useStore((s) => s.setHlEp)
   const backHl = useStore((s) => s.backHl)
   const setHlQ = useStore((s) => s.setHlQ)
@@ -67,16 +63,18 @@ function HlDetail(): ReactElement {
   const openPreview = useStore((s) => s.openPreview)
   const goto = useStore((s) => s.goto)
 
-  const mine = hls.filter((h) => h.d === drama)
+  const list = useMemo(() => filterHls(hls, hl), [hls, hl])
+  const epOpts = useMemo(() => hlEpOptions(hls, hl.drama), [hls, hl.drama])
+  const mine = hls.filter((h) => h.dramaId === hl.drama)
   const totalDur = mine.reduce((n, h) => n + h.dur, 0)
   const avg = mine.length ? Math.round(mine.reduce((n, h) => n + h.score, 0) / mine.length) : 0
-  const dramaTitle = dramaById(drama).title
+  const dramaTitle = findDrama(dramas, hl.drama)?.title ?? '未知短剧'
 
   const columns: ColumnsType<Highlight> = [
     { title: '标题', dataIndex: 'title' },
     {
       title: '来源',
-      render: (_, h) => `《${dramaById(h.d).title}》第 ${h.ep} 集`
+      render: (_, h) => `《${findDrama(dramas, h.dramaId)?.title ?? '?'}》第 ${h.ep} 集`
     },
     { title: '时长', width: 90, render: (_, h) => `${h.dur.toFixed(1)}s` },
     { title: '评分', width: 80, render: (_, h) => <span className="dw-score">{h.score}</span> },
@@ -105,7 +103,7 @@ function HlDetail(): ReactElement {
         </div>
         <span className="dw-spacer" />
         <Badge count={basketN} size="small" offset={[-2, 2]}>
-          <Button type="primary" icon={<ScissorOutlined />} onClick={() => goto('mix', { page: 'detail', drama })}>
+          <Button type="primary" icon={<ScissorOutlined />} onClick={() => goto('mix', { page: 'detail', drama: hl.drama })}>
             去混剪
           </Button>
         </Badge>
@@ -116,7 +114,7 @@ function HlDetail(): ReactElement {
       <Card style={{ marginBottom: 16 }} styles={{ body: { padding: 16, paddingBottom: 8 } }}>
         <Space wrap style={{ marginBottom: 10 }}>
           <Select
-            value={ep}
+            value={hl.ep}
             onChange={setHlEp}
             style={{ width: 130 }}
             options={[{ value: 'all', label: '全部剧集' }, ...epOpts.map((n) => ({ value: String(n), label: `第 ${n} 集` }))]}
@@ -124,13 +122,13 @@ function HlDetail(): ReactElement {
           <Input
             allowClear
             placeholder="搜索：逆袭打脸 / 甜宠名场面…"
-            value={q}
+            value={hl.q}
             onChange={(e) => setHlQ(e.target.value)}
             style={{ width: 240 }}
             aria-label="搜索高光"
           />
           <Select
-            value={sort}
+            value={hl.sort}
             onChange={(v: HlSort) => setHlSort(v)}
             style={{ width: 120 }}
             options={[
@@ -140,7 +138,7 @@ function HlDetail(): ReactElement {
             ]}
           />
           <Segmented
-            value={view}
+            value={hl.view}
             onChange={(v) => setHlView(v as 'grid' | 'table')}
             options={[
               { value: 'grid', label: '卡片', icon: <AppstoreOutlined /> },
@@ -150,7 +148,7 @@ function HlDetail(): ReactElement {
         </Space>
         <Space size={4} wrap style={{ marginBottom: 8 }}>
           {TAGSET.map((t) => (
-            <Tag.CheckableTag key={t} checked={tags.includes(t)} onChange={() => toggleHlTag(t)}>
+            <Tag.CheckableTag key={t} checked={hl.tags.includes(t)} onChange={() => toggleHlTag(t)}>
               {t}
             </Tag.CheckableTag>
           ))}
@@ -163,66 +161,72 @@ function HlDetail(): ReactElement {
             去剧集管理审核入库
           </Button>
         </Empty>
-      ) : view === 'grid' ? (
+      ) : hl.view === 'grid' ? (
         <div className="dw-hl-grid">
-          {list.map((h) => {
-            const d = dramaById(h.d)
-            return (
-              <Card
-                key={h.id}
-                size="small"
-                styles={{ body: { padding: 12 } }}
-                cover={
-                  <div
-                    className="dw-thumb"
-                    style={{ background: d.tint }}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`预览 ${h.title}`}
-                    onClick={() => openPreview(h.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') openPreview(h.id)
-                    }}
+          {list.map((h) => (
+            <Card
+              key={h.id}
+              size="small"
+              styles={{ body: { padding: 12 } }}
+              cover={
+                <div
+                  className="dw-thumb"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`预览 ${h.title}`}
+                  onClick={() => openPreview(h.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') openPreview(h.id)
+                  }}
+                >
+                  {h.clipThumb && (
+                    <img
+                      src={mediaUrl(h.clipThumb)}
+                      alt=""
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
+                  )}
+                  <span className="dw-score">{h.score}</span>
+                  {!h.clipThumb && <span className="dw-thumb-pending">切片生成中…</span>}
+                  <span className="dw-thumb-scene">{h.scene}</span>
+                  <span className="dw-dur">{h.dur.toFixed(1)}s</span>
+                  <span className="dw-thumb-play">
+                    <CaretRightOutlined />
+                  </span>
+                  <Popconfirm
+                    title="删除这条高光？"
+                    description="切片文件将被删除，候选回到待审"
+                    okText="删除"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => deleteHl(h.id)}
                   >
-                    <span className="dw-score">{h.score}</span>
-                    <span className="dw-thumb-scene">{h.scene}</span>
-                    <span className="dw-dur">{h.dur.toFixed(1)}s</span>
-                    <span className="dw-thumb-play">
-                      <CaretRightOutlined />
-                    </span>
-                    <Popconfirm
-                      title="删除这条高光？"
-                      description="将同时从素材篮移除"
-                      okText="删除"
-                      cancelText="取消"
-                      okButtonProps={{ danger: true }}
-                      onConfirm={() => deleteHl(h.id)}
-                    >
-                      <Button
-                        size="small"
-                        danger
-                        className="dw-thumb-del"
-                        icon={<DeleteOutlined />}
-                        aria-label={`删除 ${h.title}`}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </Popconfirm>
-                  </div>
-                }
-              >
-                <div className="dw-hl-title">{h.title}</div>
-                <div className="dw-sub" style={{ margin: '2px 0 6px' }}>
-                  《{d.title}》第 {h.ep} 集
+                    <Button
+                      size="small"
+                      danger
+                      className="dw-thumb-del"
+                      icon={<DeleteOutlined />}
+                      aria-label={`删除 ${h.title}`}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </Popconfirm>
                 </div>
-                <Space size={4} wrap style={{ marginBottom: 8 }}>
-                  {h.tags.map((t) => (
-                    <Tag key={t}>{t}</Tag>
-                  ))}
-                </Space>
-                <HlActions h={h} />
-              </Card>
-            )
-          })}
+              }
+            >
+              <div className="dw-hl-title">{h.title}</div>
+              <div className="dw-sub" style={{ margin: '2px 0 6px' }}>
+                《{findDrama(dramas, h.dramaId)?.title ?? '?'}》第 {h.ep} 集
+              </div>
+              <Space size={4} wrap style={{ marginBottom: 8 }}>
+                {h.tags.map((t) => (
+                  <Tag key={t}>{t}</Tag>
+                ))}
+              </Space>
+              <HlActions h={h} />
+            </Card>
+          ))}
         </div>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
@@ -243,15 +247,22 @@ interface HlTask {
 
 function HlTasks(): ReactElement {
   const q = useStore((s) => s.hl.q)
-  const hls = useStore((s) => s.hls)
+  const hls = useHighlights()
+  const dramas = useLibrary((s) => s.dramas)
+  const basketN = useStore((s) => s.basket.length)
   const setHlQ = useStore((s) => s.setHlQ)
   const openHl = useStore((s) => s.openHl)
-  const rows: HlTask[] = DRAMAS.filter((d) => !q.trim() || d.title.includes(q.trim())).map((d) => {
-    const mine = hls.filter((h) => h.d === d.id)
-    const dur = mine.reduce((n, h) => n + h.dur, 0)
-    const avg = mine.length ? Math.round(mine.reduce((n, h) => n + h.score, 0) / mine.length) : 0
-    return { id: d.id, title: d.title, n: mine.length, dur, avg }
-  })
+  const goto = useStore((s) => s.goto)
+  const rows: HlTask[] = dramas
+    .filter((d) => !q.trim() || d.title.includes(q.trim()))
+    .map((d) => {
+      const mine = hls.filter((h) => h.dramaId === d.id)
+      const dur = mine.reduce((n, h) => n + h.dur, 0)
+      const avg = mine.length ? Math.round(mine.reduce((n, h) => n + h.score, 0) / mine.length) : 0
+      return { id: d.id, title: d.title, n: mine.length, dur, avg }
+    })
+  const totalDur = hls.reduce((n, h) => n + h.dur, 0)
+  const avgAll = hls.length ? Math.round(hls.reduce((n, h) => n + h.score, 0) / hls.length) : 0
   const columns: ColumnsType<HlTask> = [
     { title: '短剧', dataIndex: 'title' },
     { title: '高光', width: 100, render: (_, r) => (r.n > 0 ? `${r.n} 条` : <span className="dw-sub">暂无</span>) },
@@ -272,7 +283,7 @@ function HlTasks(): ReactElement {
       <div className="dw-page-head">
         <div>
           <h2 className="dw-page-title">高光管理</h2>
-          <p className="dw-page-desc">按短剧查看已入库高光。从操作栏进入该剧的处理页。</p>
+          <p className="dw-page-desc">按短剧查看已入库高光。审核通过自动切片入库，从操作栏进入该剧的处理页。</p>
         </div>
       </div>
       <Card styles={{ body: { padding: 16 } }}>
@@ -291,9 +302,23 @@ function HlTasks(): ReactElement {
           dataSource={rows}
           pagination={false}
           locale={{
-            emptyText: <Empty image={<InboxOutlined style={{ fontSize: 32, color: '#c3c8d2' }} />} description="没有匹配的短剧" />
+            emptyText:
+              dramas.length === 0 ? (
+                <Empty image={<InboxOutlined style={{ fontSize: 32, color: '#c3c8d2' }} />} description="还没有短剧，先去剧集管理导入并审核入库">
+                  <Button type="primary" onClick={() => goto('episodes', { page: 'tasks', review: null })}>
+                    去剧集管理
+                  </Button>
+                </Empty>
+              ) : (
+                <Empty image={<InboxOutlined style={{ fontSize: 32, color: '#c3c8d2' }} />} description="没有匹配的短剧" />
+              )
           }}
         />
+        <div style={{ marginTop: 12 }}>
+          <span className="dw-sub">
+            共 {hls.length} 条高光 · 总时长 {Math.round(totalDur / 60)} 分钟 · 平均评分 {avgAll} · 素材篮已选 {basketN} 条
+          </span>
+        </div>
       </Card>
     </div>
   )
