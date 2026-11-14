@@ -1,76 +1,18 @@
-import { useMemo } from 'react'
 import { create } from 'zustand'
 import type {
   AiSettings,
   AiSettingsPatch,
   ApiResult,
-  ArrangeParams,
-  ArrangeResult,
-  CandPatch,
-  Candidate,
+  CutStyle,
   Drama,
-  Episode,
+  GenerateCutParams,
   GlobalScript,
   JobInfo,
   JobLogEntry,
   JobLogState,
   Library,
-  RenderParams,
-  RenderState,
   ScanResult
 } from '../../shared/types'
-
-export interface Highlight {
-  id: string
-  dramaId: string
-  episodeId: string
-  ep: number
-  title: string
-  score: number
-  tags: string[]
-  scene: string
-  reason: string
-  in: number
-  out: number
-  dur: number
-  clip?: string
-  clipThumb?: string
-  approvedAt?: number
-}
-
-export function highlightsOf(dramas: Drama[]): Highlight[] {
-  const out: Highlight[] = []
-  for (const d of dramas) {
-    for (const ep of d.episodes) {
-      for (const c of ep.candidates ?? []) {
-        if (c.status !== 'approved') continue
-        out.push({
-          id: c.id,
-          dramaId: d.id,
-          episodeId: ep.id,
-          ep: ep.n,
-          title: c.title,
-          score: c.score,
-          tags: c.tags,
-          scene: c.scene,
-          reason: c.reason,
-          in: c.in,
-          out: c.out,
-          dur: Math.round((c.out - c.in) * 10) / 10,
-          clip: c.clip,
-          clipThumb: c.clipThumb,
-          approvedAt: c.approvedAt
-        })
-      }
-    }
-  }
-  return out
-}
-
-export function useHighlights(): Highlight[] {
-  const dramas = useLibrary((s) => s.dramas)
-  return useMemo(() => highlightsOf(dramas), [dramas])
-}
 
 interface LibraryState {
   ready: boolean
@@ -82,22 +24,24 @@ interface LibraryState {
   settings: AiSettings | null
   refresh: () => Promise<void>
   scan: (dir: string) => Promise<ScanResult>
-  importDrama: (dir: string, title: string) => Promise<{ dramaId: string; count: number }>
+  importDrama: (dir: string, title: string, autoStart?: boolean) => Promise<{ dramaId: string; count: number }>
   removeDrama: (id: string) => Promise<void>
-  rescan: (id: string) => Promise<{ added: number; repaired: number }>
-  startAsr: (dramaId: string, episodeId: string) => Promise<void>
-  startAnalyze: (dramaId: string, episodeId: string) => Promise<void>
-  startSynthesis: (dramaId: string) => Promise<void>
-  startGlobal: (dramaId: string, from: number, to: number) => Promise<void>
+  rescan: (id: string) => Promise<{ added: number }>
+  autoAnalyze: (dramaId: string, from?: number, to?: number, autoCutCount?: number) => Promise<void>
   getGlobalScript: (dramaId: string) => Promise<GlobalScript | null>
-  stopAnalyze: () => Promise<{ cleared: number }>
-  updateCandidate: (dramaId: string, episodeId: string, candId: string, patch: CandPatch) => Promise<void>
-  deleteHighlight: (dramaId: string, episodeId: string, candId: string) => Promise<void>
-  resliceHighlight: (dramaId: string, episodeId: string, candId: string) => Promise<void>
-  arrangeMix: (dramaId: string, params: ArrangeParams) => Promise<ArrangeResult>
-  renderMix: (dramaId: string, params: RenderParams) => Promise<void>
-  getRenderState: () => Promise<RenderState>
+  generateCut: (dramaId: string, params: GenerateCutParams) => Promise<void>
+  regenerateCut: (
+    dramaId: string,
+    cutId: string,
+    instruction: string,
+    style?: CutStyle,
+    targetSec?: number
+  ) => Promise<void>
+  renderCut: (dramaId: string, cutId: string) => Promise<void>
+  deleteCut: (dramaId: string, cutId: string) => Promise<void>
   openOutput: (file: string) => Promise<void>
+  exportCutPackage: (dramaId: string, cutId: string) => Promise<{ canceled: boolean; dir: string }>
+  stopTasks: (dramaId?: string) => Promise<{ cleared: number }>
   clearLogs: () => Promise<void>
   loadSettings: () => Promise<void>
   saveSettings: (patch: AiSettingsPatch) => Promise<void>
@@ -140,56 +84,47 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
     }
   },
   scan: (dir) => call<ScanResult>('library:scan', dir),
-  importDrama: (dir, title) => call<{ dramaId: string; count: number }>('library:import', { dir, title }),
+  importDrama: (dir, title, autoStart = true) =>
+    call<{ dramaId: string; count: number }>('library:import', { dir, title, autoStart }),
   removeDrama: async (id) => {
     await call<null>('library:remove', id)
     await get().refresh()
   },
   rescan: async (id) => {
-    const r = await call<{ added: number; repaired: number }>('library:rescan', id)
+    const r = await call<{ added: number }>('library:rescan', id)
     await get().refresh()
     return r
   },
-  startAsr: async (dramaId, episodeId) => {
-    await call<null>('library:start-asr', { dramaId, episodeId })
+  autoAnalyze: async (dramaId, from, to, autoCutCount = 3) => {
+    await call<null>('drama:auto-analyze', { dramaId, from, to, autoCutCount })
     await get().refresh()
   },
-  startAnalyze: async (dramaId, episodeId) => {
-    await call<null>('library:start-analyze', { dramaId, episodeId })
+  getGlobalScript: (dramaId) => call<GlobalScript | null>('drama:script', dramaId),
+  generateCut: async (dramaId, params) => {
+    await call<null>('cut:generate', { dramaId, params })
     await get().refresh()
   },
-  startSynthesis: async (dramaId) => {
-    await call<null>('library:start-synthesis', dramaId)
+  regenerateCut: async (dramaId, cutId, instruction, style, targetSec) => {
+    await call<null>('cut:regenerate', { dramaId, cutId, instruction, style, targetSec })
     await get().refresh()
   },
-  startGlobal: async (dramaId, from, to) => {
-    await call<null>('library:start-global', { dramaId, from, to })
+  renderCut: async (dramaId, cutId) => {
+    await call<null>('cut:render', { dramaId, cutId })
     await get().refresh()
   },
-  getGlobalScript: (dramaId) => call<GlobalScript | null>('library:global-script', dramaId),
-  stopAnalyze: async () => {
-    const r = await call<{ cleared: number }>('library:stop-analyze')
-    await get().refresh()
-    return r
-  },
-  updateCandidate: async (dramaId, episodeId, candId, patch) => {
-    await call<null>('library:cand-update', { dramaId, episodeId, candId, patch })
-  },
-  deleteHighlight: async (dramaId, episodeId, candId) => {
-    await call<null>('library:hl-delete', { dramaId, episodeId, candId })
+  deleteCut: async (dramaId, cutId) => {
+    await call<null>('cut:delete', { dramaId, cutId })
     await get().refresh()
   },
-  resliceHighlight: async (dramaId, episodeId, candId) => {
-    await call<null>('library:hl-reslice', { dramaId, episodeId, candId })
-    await get().refresh()
-  },
-  arrangeMix: (dramaId, params) => call<ArrangeResult>('mix:arrange', { dramaId, params }),
-  renderMix: async (dramaId, params) => {
-    await call<null>('mix:render', { dramaId, params })
-  },
-  getRenderState: () => call<RenderState>('mix:render-state'),
   openOutput: async (file) => {
-    await call<null>('mix:open-output', file)
+    await call<null>('cut:open-output', file)
+  },
+  exportCutPackage: (dramaId, cutId) =>
+    call<{ canceled: boolean; dir: string }>('cut:export-package', { dramaId, cutId }),
+  stopTasks: async (dramaId) => {
+    const r = await call<{ cleared: number }>('job:stop', dramaId)
+    await get().refresh()
+    return r
   },
   clearLogs: async () => {
     await call<null>('library:logs-clear')
@@ -213,20 +148,12 @@ export function mediaUrl(file: string): string {
   return `dw-media:///${encodeURIComponent(file.replace(/\\/g, '/'))}`
 }
 
-export function findDrama(dramas: Drama[], id: string): Drama | undefined {
+export function findDrama(dramas: Drama[], id: string | null): Drama | undefined {
+  if (!id) return undefined
   return dramas.find((d) => d.id === id)
 }
 
-export function findEpisode(dramas: Drama[], dramaId: string, n: number): Episode | undefined {
-  return findDrama(dramas, dramaId)?.episodes.find((e) => e.n === n)
-}
-
-export function candsOf(dramas: Drama[], dramaId: string, n: number): Candidate[] {
-  return findEpisode(dramas, dramaId, n)?.candidates ?? []
-}
-
-export function fmtDur(sec: number | null): string {
-  if (sec === null || !Number.isFinite(sec)) return '—'
+export function fmtSec(sec: number): string {
   const m = Math.floor(sec / 60)
   const s = Math.floor(sec % 60)
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
@@ -236,16 +163,6 @@ export function fmtSize(bytes: number): string {
   if (bytes >= 1 << 30) return `${(bytes / (1 << 30)).toFixed(2)} GB`
   if (bytes >= 1 << 20) return `${(bytes / (1 << 20)).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
-}
-
-export type EpCategory = 'running' | 'failed' | 'review' | 'done' | 'idle'
-
-export function epCat(e: Episode): EpCategory {
-  if (e.asr === 'run' || e.asr === 'queue' || e.ana === 'run' || e.ana === 'queue') return 'running'
-  if (e.asr === 'fail' || e.ana === 'fail') return 'failed'
-  if (e.pending > 0) return 'review'
-  if (e.asr === 'done') return 'done'
-  return 'idle'
 }
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -258,7 +175,7 @@ export function startLibrarySync(): () => void {
   })
   pollTimer = setInterval(() => {
     if (useLibrary.getState().running > 0) void useLibrary.getState().refresh()
-  }, 2500)
+  }, 2000)
   return () => {
     off?.()
     if (pollTimer) {

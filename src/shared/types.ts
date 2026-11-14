@@ -29,13 +29,6 @@ export interface Candidate {
   approvedAt?: number
 }
 
-export interface CandPatch {
-  status?: CandStatus
-  in?: number
-  out?: number
-  tags?: string[]
-}
-
 export interface ModelCfg {
   baseUrl: string
   apiKey: string
@@ -43,12 +36,11 @@ export interface ModelCfg {
 }
 
 export interface AiSettings {
-  video: ModelCfg
-  text: ModelCfg
   global: ModelCfg
+  text: ModelCfg
 }
 
-export type AiSettingsPatch = { video?: Partial<ModelCfg>; text?: Partial<ModelCfg>; global?: Partial<ModelCfg> }
+export type AiSettingsPatch = { global?: Partial<ModelCfg>; text?: Partial<ModelCfg> }
 
 export interface Episode {
   id: string
@@ -120,6 +112,77 @@ export interface DramaGlobal {
   updatedAt: number
 }
 
+export type CutStyle = 'conflict' | 'reversal' | 'suspense'
+
+export interface CutStyleMeta {
+  name: string
+  desc: string
+  defaultTarget: number
+  roles: string[]
+}
+
+export const CUT_STYLES: Record<CutStyle, CutStyleMeta> = {
+  conflict: {
+    name: '冲突爆破',
+    desc: '0-3 秒最强欺辱/冲突直接开场，紧接反击爽点，节奏极快',
+    defaultTarget: 45,
+    roles: ['钩子', '冲突', '反击']
+  },
+  reversal: {
+    name: '递进反转',
+    desc: '立住委屈与赌注 → 反派步步紧逼 → 亮出底牌逆转打脸',
+    defaultTarget: 60,
+    roles: ['钩子', '铺垫', '升级', '反转']
+  },
+  suspense: {
+    name: '悬念卡点',
+    desc: '冲突层层加码，在身份揭晓或关键动作即将落地时戛然而止',
+    defaultTarget: 75,
+    roles: ['钩子', '升级', '高潮', '悬念']
+  }
+}
+
+export interface CutClip {
+  epId: string
+  epN: number
+  in: number
+  out: number
+  role: string
+  why: string
+  quote?: string
+}
+
+export interface PromoCut {
+  id: string
+  title: string
+  style: CutStyle
+  ratio: '9:16' | '16:9'
+  targetSec: number
+  actualSec: number
+  hookHeadline: string
+  publishCopy: string
+  conflictSummary: string
+  directorNote: string
+  clips: CutClip[]
+  status: 'draft' | 'rendering' | 'ready' | 'fail'
+  pct?: number
+  output?: string
+  srtPath?: string
+  error?: string
+  revision: number
+  lastInstruction?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface GenerateCutParams {
+  style: CutStyle
+  targetSec: number
+  ratio: '9:16' | '16:9'
+  count?: number
+  prompt?: string
+}
+
 export interface Drama {
   id: string
   title: string
@@ -128,6 +191,7 @@ export interface Drama {
   episodes: Episode[]
   synthesis?: DramaSynthesis
   global?: DramaGlobal
+  cuts?: PromoCut[]
 }
 
 export interface Library {
@@ -135,12 +199,13 @@ export interface Library {
   dramas: Drama[]
 }
 
-export type JobKind = 'probe' | 'thumb' | 'asr' | 'analyze' | 'shots' | 'slice' | 'synthesis' | 'render' | 'global'
+export type JobKind = 'probe' | 'thumb' | 'shots' | 'global' | 'generate-cut' | 'render-cut'
 
 export interface JobInfo {
   kind: JobKind
   dramaId: string
   episodeId: string
+  cutId?: string
   label: string
   pct: number
 }
@@ -174,72 +239,3 @@ export interface ScanResult {
 }
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
-
-export type MixStructure = 'blast' | 'escalate' | 'cliff'
-
-export interface StructureMeta {
-  name: string
-  desc: string
-  roles: string[]
-  caps: Record<string, number>
-}
-
-export const STRUCTURES: Record<MixStructure, StructureMeta> = {
-  blast: {
-    name: '单点爆破',
-    desc: '1-2 段最强冲突直接开场，无完整弧线，适合 30 秒',
-    roles: ['钩子', '高潮'],
-    caps: { 钩子: 8, 高潮: 12 }
-  },
-  escalate: {
-    name: '三段递进',
-    desc: '钩子→升级→高潮，冲突层层加码，适合 45-60 秒',
-    roles: ['钩子', '升级', '高潮'],
-    caps: { 钩子: 8, 升级: 10, 高潮: 12 }
-  },
-  cliff: {
-    name: '悬念卡点',
-    desc: '完整弧线结尾留悬念，引导看下集，适合 60-90 秒',
-    roles: ['钩子', '铺垫', '升级', '高潮', '反转', '悬念'],
-    caps: { 钩子: 8, 铺垫: 9, 升级: 10, 高潮: 12, 反转: 8, 悬念: 10 }
-  }
-}
-
-export interface ArrangeParams {
-  structure: MixStructure
-  target: number
-  ratio: '9:16' | '16:9'
-  prompt: string
-  basket: string[]
-}
-
-export interface ArrangeClip {
-  candId: string
-  in: number
-  out: number
-  role: string
-  why: string
-}
-
-export interface ArrangeResult {
-  clips: ArrangeClip[]
-  tokens: number
-}
-
-export interface RenderClip {
-  candId: string
-  in: number
-  out: number
-}
-
-export interface RenderParams {
-  ratio: '9:16' | '16:9'
-  clips: RenderClip[]
-}
-
-export interface RenderState {
-  status: 'idle' | 'running' | 'done' | 'fail'
-  pct: number
-  output: string
-  error: string
-}

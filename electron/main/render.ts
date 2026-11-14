@@ -1,22 +1,12 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import type { Drama, RenderParams, RenderState } from '../../src/shared/types'
+import type { AsrSegment, Drama, PromoCut } from '../../src/shared/types'
 import { cacheDir } from './db'
 import { ffmpegBin, fileExists, run } from './media'
 
-let state: RenderState = { status: 'idle', pct: 0, output: '', error: '' }
-
-export function getRenderState(): RenderState {
-  return state
-}
-
-export function setRenderState(patch: Partial<RenderState>): void {
-  state = { ...state, ...patch }
-}
-
 function safeName(s: string): string {
-  return s.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || '混剪'
+  return s.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || '智剪成片'
 }
 
 function stamp(): string {
@@ -25,33 +15,67 @@ function stamp(): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
 }
 
-export async function renderMix(
-  drama: Drama,
-  params: RenderParams,
-  onProgress: (pct: number) => void,
-  onLog?: (msg: string) => void
-): Promise<string> {
-  const { clips, ratio } = params
-  if (clips.length === 0) throw new Error('没有可渲染的片段')
-  const target = ratio === '9:16' ? { w: 1080, h: 1920 } : { w: 1920, h: 1080 }
-  const vf = `scale=${target.w}:${target.h}:force_original_aspect_ratio=decrease,pad=${target.w}:${target.h}:(ow-iw)/2:(oh-ih)/2,setsar=1`
-  const dir = path.join(cacheDir(), 'render', `${Date.now()}`)
-  fs.mkdirSync(dir, { recursive: true })
-  const segFiles: string[] = []
-  try {
-    for (let i = 0; i < clips.length; i++) {
-      const clip = clips[i]
-      let epFile: string | null = null
-      for (const ep of drama.episodes) {
-        if (ep.candidates?.some((c) => c.id === clip.candId)) {
-          epFile = ep.file
-          break
-        }
+function fmtSrtTime(sec: number): string {
+  const ms = Math.max(0, Math.round(sec * 1000))
+  const h = Math.floor(ms / 3_600_000)
+  const m = Math.floor((ms % 3_600_000) / 60_000)
+  const s = Math.floor((ms % 60_000) / 1000)
+  const rem = ms % 1000
+  const p2 = (n: number): string => String(n).padStart(2, '0')
+  const p3 = (n: number): string => String(n).padStart(3, '0')
+  return `${p2(h)}:${p2(m)}:${p2(s)},${p3(rem)}`
+}
+
+/** 根据成片 clips 拼接时间轴映射出对应的 .srt 字幕内容，方便用户直接导入剪映 */
+export function buildCutSrt(drama: Drama, cut: PromoCut): string {
+  const entries: { start: number; end: number; text: string }[] = []
+  let offset = 0
+  for (const clip of cut.clips) {
+    const ep = drama.episodes.find((e) => e.id === clip.epId || e.n === clip.epN)
+    const dur = Math.max(0.1, clip.out - clip.in)
+    const segs: AsrSegment[] = ep?.segments ?? []
+    for (const seg of segs) {
+      if (seg.end <= clip.in || seg.start >= clip.out) continue
+      const s = Math.max(0, seg.start - clip.in) + offset
+      const e = Math.min(dur, seg.end - clip.in) + offset
+      if (e - s >= 0.2 && seg.text.trim()) {
+        entries.push({ start: s, end: e, text: seg.text.trim() })
       }
-      if (!epFile) throw new Error(`第 ${i + 1} 段找不到对应剧集`)
-      if (!fileExists(epFile)) throw new Error('原视频文件不存在，可能已被移动或删除')
-      const seg = path.join(dir, `seg-${i}.mp4`)
-      const dur = Math.max(0.1, clip.out - clip.in)
+    }
+    offset += dur
+  }
+  return entries
+    .map((item, idx) => `${idx + 1}\n${fmtSrtTime(item.start)} --> ${fmtSrtTime(item.end)}\n${item.text}\n`)
+    .join('\n')
+}
+
+export async function renderPromoCut(
+  drama: Drama,
+  cut: PromoCut,
+  onProgress: (pct: number) => void,
+  onLog?: (msg: string) => void,
+  signal?: AbortSignal
+): Promise<{ output: string; srtPath: string }> {
+  if (cut.clips.length === 0) throw new Error('切片方案没有可用片段')
+  const target = cut.ratio === '9:16' ? { w: 1080, h: 1920 } : { w: 1920, h: 1080 }
+  const vf = `scale=${target.w}:${target.h}:force_original_aspect_ratio=decrease,pad=${target.w}:${target.h}:(ow-iw)/2:(oh-ih)/2,setsar=1`
+  const workDir = path.join(cacheDir(), 'render', `${cut.id}-${Date.now()}`)
+  fs.mkdirSync(workDir, { recursive: true })
+  const segFiles: string[] = []
+
+  try {
+    for (let i = 0; i < cut.clips.length; i++) {
+      if (signal?.aborted) throw new Error('已取消')
+      const clip = cut.clips[i]
+      const ep = drama.episodes.find((e) => e.id === clip.epId || e.n === clip.epN)
+      if (!ep) throw new Error(`第 ${i + 1} 段找不到第 ${clip.epN} 集`)
+      if (!fileExists(ep.file)) throw new Error(`第 ${clip.epN} 集原文件不存在：${ep.file}`)
+
+      const seg = path.join(workDir, `seg-${i}.mp4`)
+      const dur = Math.max(0.2, clip.out - clip.in)
+      const fadeOutStart = Math.max(0, dur - 0.06).toFixed(3)
+      const af = `loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:st=0:d=0.04,afade=t=out:st=${fadeOutStart}:d=0.06`
+
       await run(
         ffmpegBin(),
         [
@@ -59,11 +83,13 @@ export async function renderMix(
           '-ss',
           clip.in.toFixed(3),
           '-i',
-          epFile,
+          ep.file,
           '-t',
           dur.toFixed(3),
           '-vf',
           vf,
+          '-af',
+          af,
           '-r',
           '30',
           '-c:v',
@@ -71,39 +97,65 @@ export async function renderMix(
           '-preset',
           'veryfast',
           '-crf',
-          '20',
+          '19',
           '-pix_fmt',
           'yuv420p',
           '-c:a',
           'aac',
           '-b:a',
-          '128k',
+          '160k',
           '-ar',
           '48000',
           '-ac',
           '2',
           seg
         ],
-        10 * 60_000
+        10 * 60_000,
+        8000,
+        signal
       )
       segFiles.push(seg)
-      onProgress(Math.round(((i + 1) / clips.length) * 90))
-      onLog?.(`渲染分段 ${i + 1}/${clips.length} 完成`)
+      onProgress(Math.round(((i + 1) / cut.clips.length) * 88))
+      onLog?.(`渲染片段 ${i + 1}/${cut.clips.length}（第 ${clip.epN} 集 ${clip.in.toFixed(1)}-${clip.out.toFixed(1)}s）`)
     }
-    const listFile = path.join(dir, 'list.txt')
+
+    const listFile = path.join(workDir, 'list.txt')
     fs.writeFileSync(listFile, segFiles.map((f) => `file '${f.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'))
-    const outDir = path.join(app.getPath('userData'), 'renders')
-    fs.mkdirSync(outDir, { recursive: true })
-    const output = path.join(outDir, `${safeName(drama.title)}_混剪_${stamp()}.mp4`)
+
+    let outDir = path.join(drama.dir, '成片')
+    try {
+      fs.mkdirSync(outDir, { recursive: true })
+    } catch {
+      outDir = path.join(app.getPath('userData'), 'renders', drama.id)
+      fs.mkdirSync(outDir, { recursive: true })
+    }
+    const baseName = `${safeName(cut.title)}_v${cut.revision}_${stamp()}`
+    const output = path.join(outDir, `${baseName}.mp4`)
+    const srtPath = path.join(outDir, `${baseName}.srt`)
+
     await run(
       ffmpegBin(),
       ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', output],
-      10 * 60_000
+      10 * 60_000,
+      8000,
+      signal
     )
+
+    const srt = buildCutSrt(drama, cut)
+    fs.writeFileSync(srtPath, srt, 'utf8')
+    const copyTxt = [
+      `【方案名称】${cut.title} (v${cut.revision})`,
+      `【开场花字标题】${cut.hookHeadline}`,
+      `【引流发布文案】\n${cut.publishCopy}`,
+      `【核心冲突】${cut.conflictSummary}`,
+      `【剪辑师备注】${cut.directorNote}`
+    ].join('\n')
+    fs.writeFileSync(path.join(outDir, `${baseName}_文案.txt`), copyTxt, 'utf8')
+
     onProgress(100)
-    onLog?.(`混剪渲染完成：${output}`)
-    return output
+    onLog?.(`成片渲染完成：${output}`)
+    return { output, srtPath }
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true })
+    fs.rmSync(workDir, { recursive: true, force: true })
   }
 }

@@ -1,13 +1,33 @@
-import { ipcMain, protocol, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import type { AiSettingsPatch, ApiResult, ArrangeParams, CandPatch, Drama, Episode, ModelCfg, RenderParams, ScanFile, ScanResult } from '../../src/shared/types'
-import { allEpisodes, findDrama, findEpisode, getLibrary, saveLibrary } from './db'
-import { buildArrange } from './arrange'
-import { broadcastLibrary, clearJobLogs, currentJob, enqueue, enqueueAnalyze, enqueueAsr, enqueueGlobal, enqueueRender, enqueueSynthesis, getJobLogState, runningCount, stopAnalyze } from './jobs'
+import type {
+  AiSettingsPatch,
+  ApiResult,
+  CutStyle,
+  Drama,
+  Episode,
+  GenerateCutParams,
+  ModelCfg,
+  ScanFile,
+  ScanResult
+} from '../../src/shared/types'
+import { findDrama, getLibrary, saveLibrary } from './db'
 import { readGlobalScript } from './global'
+import {
+  broadcastLibrary,
+  clearJobLogs,
+  currentJob,
+  enqueue,
+  enqueueGenerateCut,
+  enqueueGlobal,
+  enqueueRegenerateCut,
+  enqueueRenderCut,
+  getJobLogState,
+  runningCount,
+  stopTasks
+} from './jobs'
 import { fileExists } from './media'
-import { getRenderState } from './render'
 import { getSettings, saveSettings } from './settings'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.avi', '.flv', '.ts', '.m4v', '.wmv', '.webm'])
@@ -110,19 +130,19 @@ export function registerMediaProtocol(): void {
   protocol.handle('dw-media', (request) => {
     let filePath: string
     try {
-      filePath = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '')
+      const rawPath = decodeURIComponent(new URL(request.url).pathname)
+      filePath = rawPath.replace(/^\/+/, process.platform === 'win32' ? '' : '/')
     } catch {
       return new Response('bad path', { status: 400 })
     }
-    // 只允许播放已登记的剧集文件、缩略图及高光切片，避免任意文件读取
-    const allowed = allEpisodes().some(
-      ({ ep }) =>
-        path.normalize(ep.file) === path.normalize(filePath) ||
-        (ep.thumb !== null && path.normalize(ep.thumb) === path.normalize(filePath)) ||
-        (ep.candidates ?? []).some(
-          (c) =>
-            (c.clip !== undefined && path.normalize(c.clip) === path.normalize(filePath)) ||
-            (c.clipThumb !== undefined && path.normalize(c.clipThumb) === path.normalize(filePath))
+    const norm = path.normalize(filePath)
+    const allowed = getLibrary().dramas.some(
+      (d) =>
+        (d.cuts ?? []).some((c) => c.output && path.normalize(c.output) === norm) ||
+        d.episodes.some(
+          (ep) =>
+            path.normalize(ep.file) === norm ||
+            (ep.thumb !== null && path.normalize(ep.thumb) === norm)
         )
     )
     if (!allowed) return new Response('not found', { status: 404 })
@@ -169,11 +189,8 @@ export function registerMediaProtocol(): void {
 
 export function registerIpc(): void {
   ipcMain.handle('library:get', () => ok(getLibrary()))
-
   ipcMain.handle('library:job', () => ok(currentJob()))
-
   ipcMain.handle('library:running', () => ok(runningCount()))
-
   ipcMain.handle('library:logs', () => ok(getJobLogState()))
 
   ipcMain.handle('library:logs-clear', () => {
@@ -187,7 +204,7 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('library:import', (_e, payload: unknown) => {
-    const { dir, title } = (payload ?? {}) as { dir?: string; title?: string }
+    const { dir, title, autoStart } = (payload ?? {}) as { dir?: string; title?: string; autoStart?: boolean }
     if (typeof dir !== 'string' || !dir.trim()) return fail('请先选择素材目录')
     const cleanTitle = typeof title === 'string' && title.trim() ? title.trim() : path.basename(dir)
     const scan = scanDir(path.resolve(dir.trim()))
@@ -195,7 +212,7 @@ export function registerIpc(): void {
     const matched = scan.data.files.filter((f) => f.n !== null)
     if (matched.length === 0) return fail('没有识别到可导入的剧集文件（文件名需包含集数，如「第3集.mp4」）')
     if (getLibrary().dramas.some((d) => path.normalize(d.dir) === path.normalize(scan.data.dir))) {
-      return fail('该目录已导入，可在剧集列表里使用「重新扫描」增量添加新集')
+      return fail('该目录已导入，可在项目列表使用「重新扫描」同步新集')
     }
     const seen = new Set<number>()
     const episodes: Episode[] = []
@@ -210,7 +227,8 @@ export function registerIpc(): void {
       title: cleanTitle,
       dir: scan.data.dir,
       createdAt: Date.now(),
-      episodes
+      episodes,
+      cuts: []
     }
     getLibrary().dramas.push(drama)
     saveLibrary()
@@ -218,6 +236,9 @@ export function registerIpc(): void {
       enqueue('probe', drama.id, ep.id)
       enqueue('thumb', drama.id, ep.id)
       enqueue('shots', drama.id, ep.id)
+    }
+    if (autoStart) {
+      enqueueGlobal(drama.id, { from: episodes[0].n, to: episodes[episodes.length - 1].n }, 3)
     }
     broadcastLibrary()
     return ok({ dramaId: drama.id, count: episodes.length })
@@ -228,11 +249,9 @@ export function registerIpc(): void {
     const lib = getLibrary()
     const idx = lib.dramas.findIndex((d) => d.id === dramaId)
     if (idx < 0) return fail('短剧不存在')
-    for (const ep of lib.dramas[idx].episodes) {
-      for (const c of ep.candidates ?? []) {
-        if (c.clip) fs.rmSync(c.clip, { force: true })
-        if (c.clipThumb) fs.rmSync(c.clipThumb, { force: true })
-      }
+    for (const cut of lib.dramas[idx].cuts ?? []) {
+      if (cut.output) fs.rmSync(cut.output, { force: true })
+      if (cut.srtPath) fs.rmSync(cut.srtPath, { force: true })
     }
     lib.dramas.splice(idx, 1)
     saveLibrary()
@@ -257,15 +276,6 @@ export function registerIpc(): void {
       added.push(ep)
     }
     drama.episodes.sort((a, b) => a.n - b.n)
-    let repaired = 0
-    for (const ep of drama.episodes) {
-      if (!fileExists(ep.file)) continue
-      const thumbMissing = ep.thumb === null || !fileExists(ep.thumb)
-      if (ep.duration === null || thumbMissing || ep.shots === undefined) repaired++
-      if (ep.duration === null) enqueue('probe', drama.id, ep.id)
-      if (thumbMissing) enqueue('thumb', drama.id, ep.id)
-      if (ep.shots === undefined) enqueue('shots', drama.id, ep.id)
-    }
     saveLibrary()
     for (const ep of added) {
       enqueue('probe', drama.id, ep.id)
@@ -273,161 +283,123 @@ export function registerIpc(): void {
       enqueue('shots', drama.id, ep.id)
     }
     broadcastLibrary()
-    return ok({ added: added.length, repaired })
+    return ok({ added: added.length })
   })
 
-  ipcMain.handle('library:start-asr', (_e, payload: unknown) => {
-    const { dramaId, episodeId } = (payload ?? {}) as { dramaId?: string; episodeId?: string }
-    if (typeof dramaId !== 'string' || typeof episodeId !== 'string') return fail('参数错误')
-    const found = allEpisodes().find(({ ep }) => ep.id === episodeId)
-    if (!found) return fail('剧集不存在')
-    if (!fileExists(found.ep.file)) return fail('视频文件不存在，可能已被移动或删除')
-    if (!enqueueAsr(dramaId, episodeId)) return fail('该剧集已在转写队列中')
-    return ok(null)
-  })
-
-  ipcMain.handle('library:start-analyze', (_e, payload: unknown) => {
-    const { dramaId, episodeId } = (payload ?? {}) as { dramaId?: string; episodeId?: string }
-    if (typeof dramaId !== 'string' || typeof episodeId !== 'string') return fail('参数错误')
-    const found = findEpisode(dramaId, episodeId)
-    if (!found) return fail('剧集不存在')
-    if (!fileExists(found.ep.file)) return fail('视频文件不存在，可能已被移动或删除')
-    if (!enqueueAnalyze(dramaId, episodeId)) return fail('该剧集已在分析队列中')
-    return ok(null)
-  })
-
-  ipcMain.handle('library:start-synthesis', (_e, dramaId: unknown) => {
+  ipcMain.handle('drama:auto-analyze', (_e, payload: unknown) => {
+    const { dramaId, from, to, autoCutCount } = (payload ?? {}) as {
+      dramaId?: string
+      from?: number
+      to?: number
+      autoCutCount?: number
+    }
     if (typeof dramaId !== 'string') return fail('参数错误')
-    if (!findDrama(dramaId)) return fail('短剧不存在')
-    if (!enqueueSynthesis(dramaId)) return fail('该剧已在统筹队列中')
-    return ok(null)
-  })
-
-  ipcMain.handle('library:start-global', (_e, payload: unknown) => {
-    const { dramaId, from, to } = (payload ?? {}) as { dramaId?: string; from?: number; to?: number }
-    if (typeof dramaId !== 'string' || !Number.isFinite(from) || !Number.isFinite(to) || from! > to!) return fail('参数错误')
     const drama = findDrama(dramaId)
-    if (!drama) return fail('短剧不存在')
-    if (!drama.episodes.some((e) => e.n >= from! && e.n <= to!)) return fail('范围内没有剧集')
-    if (!enqueueGlobal(dramaId, { from: from!, to: to! })) return fail('该剧已在全局分析队列中')
+    if (!drama || drama.episodes.length === 0) return fail('短剧不存在或没有剧集')
+    const f = from ?? drama.episodes[0].n
+    const t = to ?? drama.episodes[drama.episodes.length - 1].n
+    if (!enqueueGlobal(dramaId, { from: f, to: t }, autoCutCount ?? 3)) {
+      return fail('该剧已在全局分析队列中')
+    }
     return ok(null)
   })
 
-  ipcMain.handle('library:global-script', (_e, dramaId: unknown) => {
+  ipcMain.handle('drama:script', (_e, dramaId: unknown) => {
     if (typeof dramaId !== 'string') return fail('参数错误')
     return ok(readGlobalScript(dramaId))
   })
 
-  ipcMain.handle('library:stop-analyze', () => ok(stopAnalyze()))
-
-  ipcMain.handle('library:cand-update', (_e, payload: unknown) => {
-    const { dramaId, episodeId, candId, patch } = (payload ?? {}) as {
-      dramaId?: string
-      episodeId?: string
-      candId?: string
-      patch?: CandPatch
-    }
-    if (typeof dramaId !== 'string' || typeof episodeId !== 'string' || typeof candId !== 'string' || !patch) {
-      return fail('参数错误')
-    }
-    const found = findEpisode(dramaId, episodeId)
-    if (!found) return fail('剧集不存在')
-    const c = found.ep.candidates?.find((x) => x.id === candId)
-    if (!c) return fail('候选不存在')
-    const wasApproved = c.status === 'approved'
-    if (patch.status === 'pending' || patch.status === 'approved' || patch.status === 'rejected') {
-      c.status = patch.status
-    }
-    if (c.status === 'approved' && !wasApproved) c.approvedAt = Date.now()
-    if (typeof patch.in === 'number' && Number.isFinite(patch.in)) {
-      c.in = Math.max(0, Math.min(patch.in, c.out - 0.5))
-    }
-    if (typeof patch.out === 'number' && Number.isFinite(patch.out)) {
-      c.out = Math.min(found.ep.duration ?? patch.out, Math.max(patch.out, c.in + 0.5))
-    }
-    if (Array.isArray(patch.tags)) c.tags = patch.tags.map(String)
-    found.ep.pending = (found.ep.candidates ?? []).filter((x) => x.status === 'pending').length
-    found.ep.hl = (found.ep.candidates ?? []).filter((x) => x.status === 'approved').length
-    saveLibrary()
-    if (c.status === 'approved' && (!wasApproved || typeof patch.in === 'number' || typeof patch.out === 'number')) {
-      enqueue('slice', dramaId, episodeId, candId)
-    }
-    broadcastLibrary()
-    return ok(null)
-  })
-
-  ipcMain.handle('library:hl-delete', (_e, payload: unknown) => {
-    const { dramaId, episodeId, candId } = (payload ?? {}) as {
-      dramaId?: string
-      episodeId?: string
-      candId?: string
-    }
-    if (typeof dramaId !== 'string' || typeof episodeId !== 'string' || typeof candId !== 'string') {
-      return fail('参数错误')
-    }
-    const found = findEpisode(dramaId, episodeId)
-    if (!found) return fail('剧集不存在')
-    const c = found.ep.candidates?.find((x) => x.id === candId)
-    if (!c) return fail('候选不存在')
-    if (c.clip) fs.rmSync(c.clip, { force: true })
-    if (c.clipThumb) fs.rmSync(c.clipThumb, { force: true })
-    c.clip = undefined
-    c.clipThumb = undefined
-    c.approvedAt = undefined
-    c.status = 'pending'
-    found.ep.pending = (found.ep.candidates ?? []).filter((x) => x.status === 'pending').length
-    found.ep.hl = (found.ep.candidates ?? []).filter((x) => x.status === 'approved').length
-    saveLibrary()
-    broadcastLibrary()
-    return ok(null)
-  })
-
-  ipcMain.handle('library:hl-reslice', (_e, payload: unknown) => {
-    const { dramaId, episodeId, candId } = (payload ?? {}) as {
-      dramaId?: string
-      episodeId?: string
-      candId?: string
-    }
-    if (typeof dramaId !== 'string' || typeof episodeId !== 'string' || typeof candId !== 'string') {
-      return fail('参数错误')
-    }
-    const found = findEpisode(dramaId, episodeId)
-    if (!found) return fail('剧集不存在')
-    const c = found.ep.candidates?.find((x) => x.id === candId)
-    if (!c || c.status !== 'approved') return fail('该高光不在库中')
-    if (!fileExists(found.ep.file)) return fail('视频文件不存在，可能已被移动或删除')
-    enqueue('slice', dramaId, episodeId, candId)
-    return ok(null)
-  })
-
-  ipcMain.handle('mix:arrange', async (_e, payload: unknown) => {
-    const { dramaId, params } = (payload ?? {}) as { dramaId?: string; params?: ArrangeParams }
+  ipcMain.handle('cut:generate', (_e, payload: unknown) => {
+    const { dramaId, params } = (payload ?? {}) as { dramaId?: string; params?: GenerateCutParams }
     if (typeof dramaId !== 'string' || !params) return fail('参数错误')
-    const drama = findDrama(dramaId)
-    if (!drama) return fail('短剧不存在')
-    try {
-      const result = await buildArrange(drama, params, getSettings().text)
-      return ok(result)
-    } catch (err) {
-      return fail(err instanceof Error ? err.message : String(err))
-    }
-  })
-
-  ipcMain.handle('mix:render', (_e, payload: unknown) => {
-    const { dramaId, params } = (payload ?? {}) as { dramaId?: string; params?: RenderParams }
-    if (typeof dramaId !== 'string' || !params || !Array.isArray(params.clips) || params.clips.length === 0) {
-      return fail('参数错误')
-    }
-    if (!findDrama(dramaId)) return fail('短剧不存在')
-    if (!enqueueRender(dramaId, params)) return fail('已有渲染任务在进行，请稍候')
+    if (!enqueueGenerateCut(dramaId, params)) return fail('短剧不存在')
     return ok(null)
   })
 
-  ipcMain.handle('mix:render-state', () => ok(getRenderState()))
+  ipcMain.handle('cut:regenerate', (_e, payload: unknown) => {
+    const { dramaId, cutId, instruction, style, targetSec } = (payload ?? {}) as {
+      dramaId?: string
+      cutId?: string
+      instruction?: string
+      style?: CutStyle
+      targetSec?: number
+    }
+    if (typeof dramaId !== 'string' || typeof cutId !== 'string') return fail('参数错误')
+    if (!enqueueRegenerateCut(dramaId, cutId, instruction ?? '', style, targetSec)) {
+      return fail('切片方案不存在')
+    }
+    return ok(null)
+  })
 
-  ipcMain.handle('mix:open-output', (_e, file: unknown) => {
+  ipcMain.handle('cut:render', (_e, payload: unknown) => {
+    const { dramaId, cutId } = (payload ?? {}) as { dramaId?: string; cutId?: string }
+    if (typeof dramaId !== 'string' || typeof cutId !== 'string') return fail('参数错误')
+    if (!enqueueRenderCut(dramaId, cutId)) return fail('该切片已在渲染队列中')
+    return ok(null)
+  })
+
+  ipcMain.handle('cut:delete', (_e, payload: unknown) => {
+    const { dramaId, cutId } = (payload ?? {}) as { dramaId?: string; cutId?: string }
+    if (typeof dramaId !== 'string' || typeof cutId !== 'string') return fail('参数错误')
+    const drama = findDrama(dramaId)
+    if (!drama || !drama.cuts) return fail('切片不存在')
+    const idx = drama.cuts.findIndex((c) => c.id === cutId)
+    if (idx < 0) return fail('切片不存在')
+    const cut = drama.cuts[idx]
+    if (cut.output) fs.rmSync(cut.output, { force: true })
+    if (cut.srtPath) fs.rmSync(cut.srtPath, { force: true })
+    drama.cuts.splice(idx, 1)
+    saveLibrary()
+    broadcastLibrary()
+    return ok(null)
+  })
+
+  ipcMain.handle('cut:open-output', (_e, file: unknown) => {
     if (typeof file === 'string' && fileExists(file)) shell.showItemInFolder(file)
     return ok(null)
+  })
+
+  ipcMain.handle('cut:export-package', async (_e, payload: unknown) => {
+    const { dramaId, cutId } = (payload ?? {}) as { dramaId?: string; cutId?: string }
+    if (typeof dramaId !== 'string' || typeof cutId !== 'string') return fail('参数错误')
+    const drama = findDrama(dramaId)
+    const cut = drama?.cuts?.find((c) => c.id === cutId)
+    if (!drama || !cut || !cut.output || !fileExists(cut.output)) {
+      return fail('成片文件尚未生成')
+    }
+    const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const picked = await dialog.showOpenDialog(parent, {
+      title: '选择导出到剪映素材文件夹',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (picked.canceled || picked.filePaths.length === 0) return ok({ canceled: true, dir: '' })
+
+    const safeTitle = cut.title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 32) || '智剪成片'
+    const destDir = path.join(picked.filePaths[0], `${safeTitle}_v${cut.revision}`)
+    fs.mkdirSync(destDir, { recursive: true })
+
+    const mp4Name = `${safeTitle}_v${cut.revision}.mp4`
+    fs.copyFileSync(cut.output, path.join(destDir, mp4Name))
+    if (cut.srtPath && fileExists(cut.srtPath)) {
+      fs.copyFileSync(cut.srtPath, path.join(destDir, `${safeTitle}_v${cut.revision}.srt`))
+    }
+    const copyTxt = [
+      `【方案名称】${cut.title} (v${cut.revision})`,
+      `【开场花字标题】${cut.hookHeadline}`,
+      `【引流发布文案】\n${cut.publishCopy}`,
+      `【核心冲突】${cut.conflictSummary}`,
+      `【剪辑师备注】${cut.directorNote}`,
+      '',
+      '【片段时间线】',
+      ...cut.clips.map((c, i) => `${i + 1}. 第${c.epN}集 ${c.in.toFixed(1)}-${c.out.toFixed(1)}s [${c.role}] ${c.why}`)
+    ].join('\n')
+    fs.writeFileSync(path.join(destDir, '剪映花字与发布文案.txt'), copyTxt, 'utf8')
+    shell.openPath(destDir)
+    return ok({ canceled: false, dir: destDir })
+  })
+
+  ipcMain.handle('job:stop', (_e, dramaId?: unknown) => {
+    return ok(stopTasks(typeof dramaId === 'string' && dramaId ? dramaId : undefined))
   })
 
   ipcMain.handle('settings:get', () => ok(getSettings()))
@@ -443,12 +415,10 @@ export function registerIpc(): void {
       return out
     }
     const clean: AiSettingsPatch = {}
-    const v = cleanCfg(p.video)
-    const t = cleanCfg(p.text)
     const g = cleanCfg(p.global)
-    if (v) clean.video = v
-    if (t) clean.text = t
+    const t = cleanCfg(p.text)
     if (g) clean.global = g
+    if (t) clean.text = t
     return ok(saveSettings(clean))
   })
 }

@@ -1,233 +1,142 @@
 import { useEffect } from 'react'
 import type { ReactElement } from 'react'
 import {
-  BellOutlined,
   ClockCircleOutlined,
-  HomeOutlined,
   ScissorOutlined,
   SettingOutlined,
-  StarOutlined,
-  ThunderboltOutlined,
-  UnorderedListOutlined
+  StopOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons'
-import { Avatar, Badge, Breadcrumb, Button, Input, Layout, Menu, Tooltip } from 'antd'
-import type { MenuProps } from 'antd'
-import { startLibrarySync, useHighlights, useLibrary } from './library'
-import { totalPending, toast, useStore } from './store'
-import type { Screen } from './store'
-import Home from './modules/Home'
-import Episodes from './modules/Episodes'
-import Highlights from './modules/Highlights'
-import Mix from './modules/Mix'
+import { Badge, Breadcrumb, Button, Space, Tooltip } from 'antd'
+import { findDrama, startLibrarySync, useLibrary } from './library'
+import { toast, useStore } from './store'
 import Queue from './modules/Queue'
 import Settings from './modules/Settings'
+import Studio from './modules/Studio'
 import Panels from './panels'
-
-const SCREEN_NAMES: Record<Screen, string> = {
-  home: '首页',
-  episodes: '剧集管理',
-  highlights: '高光管理',
-  mix: '智能混剪',
-  queue: '任务队列',
-  settings: '设置'
-}
-const SEARCH_PH: Record<Screen, string> = {
-  home: '总览页不搜索',
-  episodes: '搜索集数，回车定位',
-  highlights: '搜索高光',
-  mix: '混剪页不搜索',
-  queue: '当前页不搜索',
-  settings: '当前页不搜索'
-}
 
 export default function App(): ReactElement {
   const screen = useStore((s) => s.screen)
-  const pending = useStore(totalPending)
-  const basketN = useStore((s) => s.basket.length)
-  const cost = useStore((s) => s.cost)
-  const epDrama = useStore((s) => s.ep.drama)
-  const epReview = useStore((s) => s.ep.review)
-  const epPage = useStore((s) => s.ep.page)
-  const hlPage = useStore((s) => s.hl.page)
-  const hlDrama = useStore((s) => s.hl.drama)
-  const mixPage = useStore((s) => s.mix.page)
-  const mixDrama = useStore((s) => s.mix.drama)
+  const selectedDramaId = useStore((s) => s.selectedDramaId)
   const goto = useStore((s) => s.goto)
-  const globalSearch = useStore((s) => s.globalSearch)
+  const backToProjects = useStore((s) => s.backToProjects)
   const running = useLibrary((s) => s.running)
+  const stopTasks = useLibrary((s) => s.stopTasks)
   const dramas = useLibrary((s) => s.dramas)
-  const epDramaTitle = dramas.find((x) => x.id === epDrama)?.title ?? ''
-  const hls = useHighlights()
-  const basket = useStore((s) => s.basket)
+  const currentDrama = findDrama(dramas, selectedDramaId)
 
   useEffect(() => startLibrarySync(), [])
 
-  useEffect(() => {
-    const valid = basket.filter((id) => hls.some((h) => h.id === id))
-    if (valid.length !== basket.length) useStore.setState({ basket: valid })
-  }, [hls, basket])
-
-  const menuItems: MenuProps['items'] = [
-    {
-      key: 'work',
-      type: 'group',
-      label: '工作模块',
-      children: [
-        { key: 'home', icon: <HomeOutlined />, label: '首页' },
-        {
-          key: 'episodes',
-          icon: <UnorderedListOutlined />,
-          label: (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              剧集管理
-              {pending > 0 && <Badge count={pending} size="small" />}
-            </span>
-          )
-        },
-        { key: 'highlights', icon: <StarOutlined />, label: '高光管理' },
-        {
-          key: 'mix',
-          icon: <ScissorOutlined />,
-          label: (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              智能混剪
-              {basketN > 0 && <Badge count={basketN} size="small" color="#1677ff" />}
-            </span>
-          )
-        }
-      ]
-    },
-    {
-      key: 'sys',
-      type: 'group',
-      label: '系统',
-      children: [
-        {
-          key: 'queue',
-          icon: <ClockCircleOutlined />,
-          label: (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              任务队列
-              {running > 0 && <Badge count={running} size="small" />}
-            </span>
-          )
-        },
-        { key: 'settings', icon: <SettingOutlined />, label: '设置' }
-      ]
-    }
-  ]
-
-  const onMenu: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'episodes') goto('episodes', { page: 'tasks', review: null, q: '', filter: 'all', sel: [] })
-    else if (key === 'highlights') goto('highlights', { page: 'tasks', drama: 'all', ep: 'all', q: '', tags: [] })
-    else if (key === 'mix') goto('mix', { page: 'tasks', q: '' })
-    else if (key === 'queue') goto('queue')
-    else if (key === 'settings') goto('settings')
-    else goto('home')
-  }
-
-  const crumbLink = (label: string, go: () => void): { title: ReactElement } => ({
-    title: (
-      <a
-        onClick={(e) => {
-          e.preventDefault()
-          go()
-        }}
-      >
-        {label}
-      </a>
-    )
-  })
-
   const crumbItems =
-    screen === 'episodes'
-      ? epPage === 'tasks'
-        ? [{ title: '剧集管理' }]
-        : [
-            crumbLink('剧集管理', () => goto('episodes', { page: 'tasks', review: null, q: '', filter: 'all', sel: [] })),
-            { title: epDramaTitle },
-            ...(epReview !== null ? [{ title: `第 ${epReview} 集审核` }] : [])
+    screen === 'studio'
+      ? currentDrama
+        ? [
+            {
+              title: (
+                <a
+                  onClick={(e) => {
+                    e.preventDefault()
+                    backToProjects()
+                  }}
+                >
+                  短剧项目
+                </a>
+              )
+            },
+            { title: currentDrama.title }
           ]
-      : screen === 'highlights'
-        ? hlPage === 'tasks'
-          ? [{ title: '高光管理' }]
-          : [
-              crumbLink('高光管理', () => goto('highlights', { page: 'tasks', drama: 'all', ep: 'all', q: '', tags: [] })),
-              { title: dramas.find((x) => x.id === hlDrama)?.title ?? '未知短剧' }
-            ]
-        : screen === 'mix'
-          ? mixPage === 'tasks'
-            ? [{ title: '智能混剪' }]
-            : [
-                crumbLink('智能混剪', () => goto('mix', { page: 'tasks', q: '' })),
-                { title: dramas.find((x) => x.id === mixDrama)?.title ?? '未知短剧' }
-              ]
-          : [{ title: '工作台' }, { title: SCREEN_NAMES[screen] }]
+        : [{ title: '短剧项目' }]
+      : screen === 'queue'
+        ? [{ title: '任务队列' }]
+        : [{ title: '系统设置' }]
 
   return (
-    <Layout className="dw-shell">
-      <Layout.Sider className="dw-sider" width={220} theme="dark">
-        <div className="dw-logo">
+    <div className="dw-shell">
+      <aside className="dw-rail" aria-label="主导航">
+        <button type="button" className="dw-rail-logo" onClick={backToProjects} title="短剧智剪">
           <span className="dw-logo-mark">
             <ThunderboltOutlined />
           </span>
-          短剧工作台
+        </button>
+
+        <nav className="dw-rail-nav">
+          <Tooltip title="AI 智剪" placement="right">
+            <button
+              type="button"
+              className={`dw-rail-btn${screen === 'studio' ? ' is-active' : ''}`}
+              onClick={backToProjects}
+              aria-label="AI 智剪"
+            >
+              <ScissorOutlined />
+              <span>智剪</span>
+            </button>
+          </Tooltip>
+
+          <Tooltip title="任务队列" placement="right">
+            <button
+              type="button"
+              className={`dw-rail-btn${screen === 'queue' ? ' is-active' : ''}`}
+              onClick={() => goto('queue')}
+              aria-label="任务队列"
+            >
+              <Badge count={running} size="small" offset={[4, -2]}>
+                <ClockCircleOutlined style={{ fontSize: 18, color: 'inherit' }} />
+              </Badge>
+              <span>队列</span>
+            </button>
+          </Tooltip>
+        </nav>
+
+        <div className="dw-rail-foot">
+          <Tooltip title="系统设置" placement="right">
+            <button
+              type="button"
+              className={`dw-rail-btn${screen === 'settings' ? ' is-active' : ''}`}
+              onClick={() => goto('settings')}
+              aria-label="系统设置"
+            >
+              <SettingOutlined />
+              <span>设置</span>
+            </button>
+          </Tooltip>
         </div>
-        <div className="dw-sider-scroll">
-          <Menu theme="dark" mode="inline" selectedKeys={[screen]} items={menuItems} onClick={onMenu} />
-        </div>
-        <div className="dw-sider-foot">v0.1 · 本地单机版</div>
-      </Layout.Sider>
-      <Layout className="dw-main">
-        <Layout.Header className="dw-header">
+      </aside>
+
+      <div className="dw-main">
+        <header className="dw-topbar">
           <Breadcrumb className="dw-crumbs" items={crumbItems} />
           <span className="dw-spacer" />
-          <Input.Search
-            allowClear
-            className="dw-header-search"
-            placeholder={
-              screen === 'episodes'
-                ? epPage === 'tasks'
-                  ? '搜索短剧名称'
-                  : '搜索集数，回车定位'
-                : screen === 'highlights'
-                  ? hlPage === 'tasks'
-                    ? '搜索短剧名称'
-                    : '搜索高光'
-                  : screen === 'mix'
-                    ? mixPage === 'tasks'
-                      ? '搜索短剧名称'
-                      : '混剪页不搜索'
-                    : SEARCH_PH[screen]
-            }
-            onSearch={(v) => globalSearch(v)}
-          />
-          <Tooltip title="任务通知">
-            <Badge dot={running > 0}>
-              <Button type="text" icon={<BellOutlined />} onClick={() => goto('queue')} aria-label="任务通知" />
-            </Badge>
-          </Tooltip>
-          <Avatar
-            size={28}
-            style={{ background: '#1677ff', cursor: 'pointer', flex: 'none' }}
-            onClick={() => toast('原型演示：本地单机版，无账号体系', 'info')}
-          >
-            R
-          </Avatar>
-        </Layout.Header>
-        <Layout.Content className="dw-content">
-          {screen === 'home' && <Home />}
-          {screen === 'episodes' && <Episodes />}
-          {screen === 'highlights' && <Highlights />}
-          {screen === 'mix' && <Mix />}
+          {running > 0 && (
+            <Space size={6}>
+              <Button size="small" type="text" className="dw-running-pill" onClick={() => goto('queue')}>
+                <span className="dw-pulse-dot" />
+                后台任务运行中 ({running})
+              </Button>
+              <Tooltip title="立即终止所有运行中与排队任务">
+                <Button
+                  size="small"
+                  danger
+                  type="text"
+                  icon={<StopOutlined />}
+                  aria-label="终止任务"
+                  onClick={() =>
+                    stopTasks()
+                      .then(({ cleared }) => toast(`已终止 ${cleared} 个任务`, 'info'))
+                      .catch(() => toast('终止失败', 'info'))
+                  }
+                />
+              </Tooltip>
+            </Space>
+          )}
+        </header>
+
+        <main className="dw-content">
+          {screen === 'studio' && <Studio />}
           {screen === 'queue' && <Queue />}
           {screen === 'settings' && <Settings />}
-        </Layout.Content>
-        <Layout.Footer style={{ textAlign: 'center', color: '#8a919f', fontSize: 12, padding: '12px 20px' }}>
-          本地运行 · 素材不出机 · 今日 AI 成本 ¥{cost.toFixed(2)}
-        </Layout.Footer>
-      </Layout>
+        </main>
+      </div>
       <Panels />
-    </Layout>
+    </div>
   )
 }

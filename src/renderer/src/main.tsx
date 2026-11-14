@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { ConfigProvider } from 'antd'
+import { ConfigProvider, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import App from './App'
 import './styles.css'
@@ -14,7 +14,24 @@ host.__dwRoot = root
 function render(): void {
   root.render(
     <React.StrictMode>
-      <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#1677ff', borderRadius: 8 } }}>
+      <ConfigProvider
+        locale={zhCN}
+        theme={{
+          algorithm: theme.darkAlgorithm,
+          token: {
+            colorPrimary: '#3b82f6',
+            colorBgBase: '#09090b',
+            colorBgContainer: '#111114',
+            colorBgElevated: '#18181c',
+            colorBorder: 'rgba(255, 255, 255, 0.08)',
+            colorBorderSecondary: 'rgba(255, 255, 255, 0.06)',
+            colorText: '#f4f4f5',
+            colorTextSecondary: '#a1a1aa',
+            borderRadius: 10,
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'PingFang SC', sans-serif"
+          }
+        }}
+      >
         <App />
       </ConfigProvider>
     </React.StrictMode>

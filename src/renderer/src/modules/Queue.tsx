@@ -10,12 +10,9 @@ const KIND_LABEL: Record<JobKind, string> = {
   probe: '元数据',
   thumb: '缩略图',
   shots: '镜头边界',
-  asr: '转写',
-  analyze: '视频理解',
-  slice: '高光切片',
-  synthesis: '全剧统筹',
-  global: '全局分析',
-  render: '混剪渲染'
+  global: '全局分幕分析',
+  'generate-cut': 'AI 大师编排',
+  'render-cut': '渲染成片'
 }
 
 function fmtTime(t: number): string {
@@ -30,19 +27,17 @@ export default function Queue(): ReactElement {
   const logs = useLibrary((s) => s.logs)
   const logStats = useLibrary((s) => s.logStats)
   const clearLogs = useLibrary((s) => s.clearLogs)
-  const dramas = useLibrary((s) => s.dramas)
-  const stopAnalyze = useLibrary((s) => s.stopAnalyze)
+  const stopTasks = useLibrary((s) => s.stopTasks)
   const [errOnly, setErrOnly] = useState(false)
 
-  const analyzeActive = dramas.some((d) => d.episodes.some((e) => e.ana === 'run' || e.ana === 'queue'))
   const shown = (errOnly ? logs.filter((l) => l.level === 'error') : logs).slice().reverse()
 
   const doStop = (): void => {
-    stopAnalyze()
+    stopTasks()
       .then(({ cleared }) =>
-        toast(cleared > 0 ? `已停止 ${cleared} 个分析任务` : '没有进行中的分析任务', cleared > 0 ? 'info' : 'success')
+        toast(cleared > 0 ? `已终止 ${cleared} 个任务` : '当前没有进行中的任务', cleared > 0 ? 'info' : 'success')
       )
-      .catch((e: unknown) => toast(e instanceof Error ? e.message : '停止失败', 'info'))
+      .catch((e: unknown) => toast(e instanceof Error ? e.message : '终止失败', 'info'))
   }
 
   return (
@@ -50,16 +45,26 @@ export default function Queue(): ReactElement {
       <div className="dw-page-head">
         <div>
           <h2 className="dw-page-title">任务队列</h2>
-          <p className="dw-page-desc">
-            元数据、缩略图、镜头边界、视频理解、高光切片、全剧统筹、混剪渲染的实时进度与日志。日志保留本次运行最近 500 条。
-          </p>
+          <p className="dw-page-desc">实时查看媒体预处理、全局分幕分析、AI 编排与 FFmpeg 渲染日志（保留最近 500 条）。</p>
         </div>
         <span className="dw-spacer" />
-        <Button danger icon={<StopOutlined />} disabled={!analyzeActive} onClick={doStop}>
-          停止分析
+        <Button danger icon={<StopOutlined />} disabled={running === 0 && !job} onClick={doStop}>
+          终止全部任务
         </Button>
       </div>
-      <Card size="small" title="当前任务" style={{ marginBottom: 16 }} styles={{ body: { padding: 16 } }}>
+      <Card
+        size="small"
+        title="当前任务"
+        extra={
+          (running > 0 || job) && (
+            <Button size="small" danger type="link" icon={<StopOutlined />} onClick={doStop}>
+              立即停止
+            </Button>
+          )
+        }
+        style={{ marginBottom: 16 }}
+        styles={{ body: { padding: 16 } }}
+      >
         {job ? (
           <Space direction="vertical" style={{ width: '100%' }} size={8}>
             <Space>
@@ -105,7 +110,7 @@ export default function Queue(): ReactElement {
         {shown.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={errOnly ? '没有错误日志' : '还没有日志。导入剧集或点「视频理解」后，这里会实时记录每一步'}
+            description={errOnly ? '没有错误日志' : '还没有日志，导入短剧后这里会实时记录每一步'}
           />
         ) : (
           <div className="dw-log">

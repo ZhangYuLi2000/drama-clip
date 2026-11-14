@@ -30,8 +30,8 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    title: '短剧工作台',
-    backgroundColor: '#f5f6f8',
+    title: '短剧智剪',
+    backgroundColor: '#09090b',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -41,7 +41,12 @@ function createWindow(): void {
     }
   })
 
-  win.on('ready-to-show', () => win.show())
+  const showWin = (): void => {
+    if (!win.isDestroyed() && !win.isVisible()) win.show()
+  }
+  win.once('ready-to-show', showWin)
+  win.webContents.once('did-finish-load', showWin)
+  setTimeout(showWin, 1500)
 
   if (!app.isPackaged) {
     let recovering = false

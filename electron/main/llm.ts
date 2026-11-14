@@ -201,17 +201,19 @@ export async function streamNative(
   parts: Record<string, unknown>[],
   generationConfig: Record<string, unknown>,
   label: string,
-  system?: string
+  system?: string,
+  signal?: AbortSignal
 ): Promise<{ text: string; tokens: number; cached: number }> {
   const root = cfg.baseUrl.trim().replace(/\/+$/, '').replace(/\/v1beta.*$/, '')
   const url = `${root}/v1beta/models/${cfg.model}:streamGenerateContent?alt=sse`
   const body: Record<string, unknown> = { contents: [{ role: 'user', parts }], generationConfig }
   if (system) body.systemInstruction = { parts: [{ text: system }] }
+  const timeout = AbortSignal.timeout(10 * 60_000)
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey.trim() },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10 * 60_000)
+    signal: signal ? AbortSignal.any([timeout, signal]) : timeout
   })
   if (res.status === 401 || res.status === 403) {
     throw new Error(`${label} API Key 无效或无权限（HTTP ${res.status}），请到「设置」检查`)

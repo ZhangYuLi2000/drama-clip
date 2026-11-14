@@ -19,18 +19,23 @@ export function initDb(): void {
           d.global.pct = undefined
           d.global.note = '应用重启导致任务中断，请重试'
         }
+        for (const cut of d.cuts ?? []) {
+          if (cut.status === 'rendering' || cut.status === 'draft') {
+            cut.status = 'fail'
+            cut.pct = undefined
+            cut.error = '应用重启导致渲染中断，可点击重新渲染'
+          }
+        }
         for (const ep of d.episodes) {
           if (!ep.ana) ep.ana = 'idle'
-          // 进程重启后内存队列已空，残留的 run/queue 是假状态，恢复为可重试的失败
           if (ep.asr === 'run' || ep.asr === 'queue') {
             ep.asr = 'fail'
-            ep.asrNote = '应用重启导致任务中断，请重试'
+            ep.asrNote = '应用重启导致任务中断'
           }
           if (ep.ana === 'run' || ep.ana === 'queue') {
             ep.ana = 'fail'
-            ep.anaNote = '应用重启导致任务中断，请重试'
+            ep.anaNote = '应用重启导致任务中断'
           }
-          ep.hl = (ep.candidates ?? []).filter((c) => c.status === 'approved').length
         }
       }
       saveLibrary()
@@ -51,7 +56,6 @@ export function saveLibrary(): void {
 }
 
 export function cacheDir(): string {
-  // 不能用 userData/cache：Windows 大小写不敏感，会与 Chromium 的 Cache 目录冲突被清理
   const dir = path.join(app.getPath('userData'), 'media-cache')
   fs.mkdirSync(dir, { recursive: true })
   return dir
