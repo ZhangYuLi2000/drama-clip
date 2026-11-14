@@ -10,7 +10,11 @@ import type {
 } from '../../src/shared/types'
 import { CUT_STYLES } from '../../src/shared/types'
 import { readGlobalScript } from './global'
-import { extractJson, isGoogleNative, streamChat, streamNative } from './llm'
+import { extractJson, isGoogleNative, streamChat, streamNative, type StreamResult } from './llm'
+
+// 推理模型的思考 token 与正文共享输出预算：16384 会被长思考耗尽（正文 0 token 被截断），
+// 与全局分析路径对齐到 65536；仍耗尽时自动降推理强度重试。
+const DIRECTOR_MAX_TOKENS = 65536
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v))
@@ -107,28 +111,36 @@ async function callDirectorModel(
     const r = await streamNative(
       cfg,
       [{ text: user }],
-      { maxOutputTokens: 16384, thinkingConfig: { thinkingLevel: 'low' }, responseMimeType: 'application/json' },
+      { maxOutputTokens: DIRECTOR_MAX_TOKENS, thinkingConfig: { thinkingLevel: 'low' }, responseMimeType: 'application/json' },
       '剪辑大师模型',
       system,
       signal
     )
     return { text: r.text, tokens: r.tokens }
   }
-  const r = await streamChat(
-    cfg,
-    {
-      model: cfg.model,
-      stream: true,
-      stream_options: { include_usage: true },
-      max_tokens: 16384,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
-      ]
-    },
-    '剪辑大师模型',
-    signal
-  )
+  const body = {
+    model: cfg.model,
+    stream: true,
+    stream_options: { include_usage: true },
+    max_tokens: DIRECTOR_MAX_TOKENS,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user }
+    ]
+  }
+  let r: StreamResult
+  try {
+    r = await streamChat(cfg, body, '剪辑大师模型', signal)
+  } catch (err) {
+    // 思考烧光输出预算（finish_reason=length 且正文为空）：降低推理强度重试一次
+    if ((err as { finishReason?: string | null }).finishReason !== 'length' || signal?.aborted) throw err
+    try {
+      r = await streamChat(cfg, { ...body, reasoning_effort: 'low' }, '剪辑大师模型', signal)
+    } catch {
+      ;(err as Error).message += '（已尝试降低推理强度重试，仍失败）'
+      throw err
+    }
+  }
   return { text: r.text, tokens: r.tokens }
 }
 

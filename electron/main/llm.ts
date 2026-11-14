@@ -6,9 +6,36 @@ export interface ChatMessage {
 }
 
 interface SseChunk {
-  choices?: { delta?: { content?: string } }[]
-  usage?: { total_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } }
+  choices?: {
+    delta?: { content?: string; reasoning_content?: string; reasoning?: string }
+    finish_reason?: string | null
+  }[]
+  usage?: {
+    total_tokens?: number
+    prompt_tokens_details?: { cached_tokens?: number }
+    completion_tokens_details?: { reasoning_tokens?: number }
+  }
   error?: { message?: string }
+}
+
+export interface StreamResult {
+  text: string
+  tokens: number
+  cached: number
+  finishReason: string | null
+  reasoningTokens: number
+}
+
+// 推理模型的思考 token 与正文共享 max_tokens 预算，长思考可能耗时十几分钟
+const STREAM_TIMEOUT_MS = 20 * 60_000
+
+function emptyReplyError(label: string, finishReason: string | null, reasoningTokens: number, reasoningChars: number): Error {
+  const think = reasoningTokens > 0 ? `，思考已用 ${reasoningTokens} tokens` : reasoningChars > 0 ? `，思考输出 ${reasoningChars} 字符` : ''
+  const msg =
+    finishReason === 'length'
+      ? `${label}推理耗尽输出预算（finish_reason=length${think}，正文 0 token）——请加大 max_tokens 或降低推理强度`
+      : `${label}没有返回内容（finish_reason=${finishReason ?? '未知'}${think}）`
+  return Object.assign(new Error(msg), { finishReason })
 }
 
 export async function streamChat(
@@ -16,9 +43,9 @@ export async function streamChat(
   body: Record<string, unknown>,
   label: string,
   signal?: AbortSignal
-): Promise<{ text: string; tokens: number; cached: number }> {
+): Promise<StreamResult> {
   const url = `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`
-  const timeout = AbortSignal.timeout(10 * 60_000)
+  const timeout = AbortSignal.timeout(STREAM_TIMEOUT_MS)
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -41,6 +68,9 @@ export async function streamChat(
   let text = ''
   let tokens = 0
   let cached = 0
+  let finishReason: string | null = null
+  let reasoningTokens = 0
+  let reasoningChars = 0
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
@@ -59,14 +89,19 @@ export async function streamChat(
         continue
       }
       if (j.error) throw new Error(`${label}返回错误：${j.error.message ?? '未知'}`)
-      const piece = j.choices?.[0]?.delta?.content
+      const choice = j.choices?.[0]
+      const piece = choice?.delta?.content
       if (piece) text += piece
+      const think = choice?.delta?.reasoning_content ?? choice?.delta?.reasoning
+      if (think) reasoningChars += think.length
+      if (choice?.finish_reason) finishReason = choice.finish_reason
       if (j.usage?.total_tokens) tokens = j.usage.total_tokens
       if (j.usage?.prompt_tokens_details?.cached_tokens) cached = j.usage.prompt_tokens_details.cached_tokens
+      if (j.usage?.completion_tokens_details?.reasoning_tokens) reasoningTokens = j.usage.completion_tokens_details.reasoning_tokens
     }
   }
-  if (!text.trim()) throw new Error(`${label}没有返回内容`)
-  return { text, tokens, cached }
+  if (!text.trim()) throw emptyReplyError(label, finishReason, reasoningTokens, reasoningChars)
+  return { text, tokens, cached, finishReason, reasoningTokens }
 }
 
 export async function chatText(cfg: ModelCfg, messages: ChatMessage[]): Promise<{ text: string; tokens: number }> {
@@ -190,8 +225,8 @@ export function isGoogleNative(cfg: ModelCfg): boolean {
 }
 
 interface NativeChunk {
-  candidates?: { content?: { parts?: { text?: string }[] } }[]
-  usageMetadata?: { totalTokenCount?: number; cachedContentTokenCount?: number }
+  candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[]
+  usageMetadata?: { totalTokenCount?: number; cachedContentTokenCount?: number; thoughtsTokenCount?: number }
   error?: { message?: string }
 }
 
@@ -203,12 +238,12 @@ export async function streamNative(
   label: string,
   system?: string,
   signal?: AbortSignal
-): Promise<{ text: string; tokens: number; cached: number }> {
+): Promise<StreamResult> {
   const root = cfg.baseUrl.trim().replace(/\/+$/, '').replace(/\/v1beta.*$/, '')
   const url = `${root}/v1beta/models/${cfg.model}:streamGenerateContent?alt=sse`
   const body: Record<string, unknown> = { contents: [{ role: 'user', parts }], generationConfig }
   if (system) body.systemInstruction = { parts: [{ text: system }] }
-  const timeout = AbortSignal.timeout(10 * 60_000)
+  const timeout = AbortSignal.timeout(STREAM_TIMEOUT_MS)
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey.trim() },
@@ -232,6 +267,8 @@ export async function streamNative(
   let text = ''
   let tokens = 0
   let cached = 0
+  let finishReason: string | null = null
+  let reasoningTokens = 0
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
@@ -250,13 +287,16 @@ export async function streamNative(
         continue
       }
       if (j.error) throw new Error(`${label}返回错误：${j.error.message ?? '未知'}`)
-      for (const p of j.candidates?.[0]?.content?.parts ?? []) {
+      const cand = j.candidates?.[0]
+      for (const p of cand?.content?.parts ?? []) {
         if (p.text) text += p.text
       }
+      if (cand?.finishReason) finishReason = cand.finishReason === 'MAX_TOKENS' ? 'length' : cand.finishReason
       if (j.usageMetadata?.totalTokenCount) tokens = j.usageMetadata.totalTokenCount
       if (j.usageMetadata?.cachedContentTokenCount) cached = j.usageMetadata.cachedContentTokenCount
+      if (j.usageMetadata?.thoughtsTokenCount) reasoningTokens = j.usageMetadata.thoughtsTokenCount
     }
   }
-  if (!text.trim()) throw new Error(`${label}没有返回内容`)
-  return { text, tokens, cached }
+  if (!text.trim()) throw emptyReplyError(label, finishReason, reasoningTokens, 0)
+  return { text, tokens, cached, finishReason, reasoningTokens }
 }
