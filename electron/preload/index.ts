@@ -21,6 +21,7 @@ const INVOKE_CHANNELS = [
   'cut:open-output',
   'cut:export-package',
   'job:stop',
+  'select-reference-video',
   'select-video-file',
   'replica:create',
   'replica:retry',

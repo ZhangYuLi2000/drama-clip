@@ -181,72 +181,121 @@ export default function Settings(): ReactElement {
         <div className="dw-panel" style={{ marginTop: 16 }}>
           <div className="dw-panel-head">
             <span className="dw-panel-title">3. 爆款复刻引擎（本地溯源，无需模型/API）</span>
-            <Tag style={{ marginInlineEnd: 0 }}>本地引擎</Tag>
+            <Space size={8} style={{ flex: 'none' }}>
+              <Tag style={{ marginInlineEnd: 0 }}>本地引擎</Tag>
+              <Button type="primary" size="small" loading={savingReplica} onClick={saveReplica}>
+                保存复刻设置
+              </Button>
+            </Space>
           </div>
-          <Form layout="vertical">
-            <Space wrap size={[16, 0]}>
-              <Form.Item label="索引抽帧率" extra="越高越准，索引越大越慢">
+
+          <div className="dw-field-grid">
+            <div className="dw-field">
+              <span className="dw-field-label">索引抽帧率</span>
+              <div className="dw-field-control">
                 <Select
                   value={replica.indexFps}
                   onChange={(v) => patchReplica({ indexFps: v })}
-                  style={{ width: 150 }}
                   options={[
                     { value: 8, label: '8fps · 快速' },
-                    { value: 12, label: '12fps · 精准（推荐）' },
+                    { value: 12, label: '12fps · 精准' },
                     { value: 24, label: '24fps · 极致' }
                   ]}
                 />
-              </Form.Item>
-              <Form.Item label="默认音轨">
+              </div>
+              <span className="dw-field-hint">推荐 12fps，越高越准越慢</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">默认音轨</span>
+              <div className="dw-field-control">
                 <Select
                   value={replica.audio}
                   onChange={(v) => patchReplica({ audio: v })}
-                  style={{ width: 160 }}
                   options={[
                     { value: 'source', label: '原剧集对白原声' },
                     { value: 'clip', label: '切片解说音' },
                     { value: 'none', label: '无声' }
                   ]}
                 />
-              </Form.Item>
-              <Form.Item label={<>画质 CRF<ParamTip tip={CRF_TIP} /></>} extra="越低越接近原画质">
+              </div>
+              <span className="dw-field-hint">成片使用的音轨</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">
+                画质 CRF
+                <ParamTip tip={CRF_TIP} />
+              </span>
+              <div className="dw-field-control">
                 <InputNumber min={10} max={28} value={replica.crf} onChange={(v) => patchReplica({ crf: v ?? 16 })} />
-              </Form.Item>
-              <Form.Item label="计算线程">
+              </div>
+              <span className="dw-field-hint">越低越接近原画质</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">计算线程</span>
+              <div className="dw-field-control">
                 <InputNumber min={1} max={8} value={replica.workers} onChange={(v) => patchReplica({ workers: v ?? 3 })} />
-              </Form.Item>
-            </Space>
-            <Space wrap size={[16, 0]}>
-              <Form.Item label="顶部遮罩" extra="台标/角标">
+              </div>
+              <span className="dw-field-hint">并行 worker 数</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">顶部遮罩</span>
+              <div className="dw-field-control">
                 <InputNumber min={0} max={0.75} step={0.01} value={replica.maskTop} onChange={(v) => patchReplica({ maskTop: v ?? 0 })} />
-              </Form.Item>
-              <Form.Item label="底部遮罩" extra="字幕带">
+              </div>
+              <span className="dw-field-hint">台标/角标</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">底部遮罩</span>
+              <div className="dw-field-control">
                 <InputNumber min={0} max={0.75} step={0.01} value={replica.maskBottom} onChange={(v) => patchReplica({ maskBottom: v ?? 0.25 })} />
-              </Form.Item>
-              <Form.Item label="中部字幕带" extra="如 0.63,0.78（竖屏短剧常用）">
+              </div>
+              <span className="dw-field-hint">字幕带</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">中部字幕带</span>
+              <div className="dw-field-control">
                 <Input
                   value={replica.maskBand}
                   onChange={(e) => patchReplica({ maskBand: e.target.value })}
                   placeholder="留空则不遮罩"
-                  style={{ width: 160 }}
                 />
-              </Form.Item>
-            </Space>
-            <Space wrap size={[16, 0]}>
-              <Form.Item label="去量化平滑" extra="消除粗索引 0/2 抖动，碎段减半">
+              </div>
+              <span className="dw-field-hint">如 0.63,0.78（竖屏短剧常用）</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">去量化平滑</span>
+              <div className="dw-field-control">
                 <Switch checked={replica.despike} onChange={(v) => patchReplica({ despike: v })} />
-              </Form.Item>
-              <Form.Item label="段边界精修" extra="±N 帧相关吸附到真实帧">
+              </div>
+              <span className="dw-field-hint">消除粗索引 0/2 抖动，碎段减半</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">段边界精修</span>
+              <div className="dw-field-control">
                 <Switch checked={replica.refine} onChange={(v) => patchReplica({ refine: v })} />
-              </Form.Item>
-              <Form.Item label={<>精修半径（帧）<ParamTip tip={RADIUS_TIP} /></>}>
+              </div>
+              <span className="dw-field-hint">±N 帧相关吸附到真实帧</span>
+            </div>
+
+            <div className="dw-field">
+              <span className="dw-field-label">
+                精修半径（帧）
+                <ParamTip tip={RADIUS_TIP} />
+              </span>
+              <div className="dw-field-control">
                 <InputNumber min={0} max={16} value={replica.boundsRadius} onChange={(v) => patchReplica({ boundsRadius: v ?? 6 })} />
-              </Form.Item>
-            </Space>
-            <Button type="primary" loading={savingReplica} onClick={saveReplica}>
-              保存复刻设置
-            </Button>
-          </Form>
+              </div>
+              <span className="dw-field-hint">仅精修开启时生效</span>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -25,18 +25,17 @@ import {
   Progress,
   Segmented,
   Select,
-  Slider,
   Space,
   Spin,
   Switch,
   Table,
-  Tag,
-  Tooltip
+  Tag
 } from 'antd'
 import type { CreateReplicaParams, Drama, ReplicaEdlRow, ReplicaTask } from '../../../shared/types'
 import { fmtSec, mediaUrl, useLibrary } from '../library'
 import { toast, useStore } from '../store'
 import { CRF_TIP, ParamTip, RADIUS_TIP } from '../paramTips'
+import TimelineScrubber from '../TimelineScrubber'
 
 const STATUS_LABEL: Record<ReplicaTask['status'], string> = {
   queue: '排队中',
@@ -165,30 +164,36 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
         placeholder="默认使用文件名"
         style={{ marginBottom: 12 }}
       />
-      <Space wrap style={{ marginBottom: 12 }}>
-        <span className="dw-sub">音轨</span>
-        <Select
-          value={audio}
-          onChange={setAudio}
-          style={{ width: 170 }}
-          options={[
-            { value: 'source', label: '原剧集对白原声' },
-            { value: 'clip', label: '切片解说音' },
-            { value: 'none', label: '无声' }
-          ]}
-        />
-        <span className="dw-sub">索引精度</span>
-        <Select
-          value={indexFps}
-          onChange={setIndexFps}
-          style={{ width: 150 }}
-          options={[
-            { value: 8, label: '8fps · 快速' },
-            { value: 12, label: '12fps · 精准' },
-            { value: 24, label: '24fps · 极致' }
-          ]}
-        />
-      </Space>
+      <div className="dw-field-grid is-compact">
+        <div className="dw-field">
+          <span className="dw-field-label">音轨</span>
+          <div className="dw-field-control">
+            <Select
+              value={audio}
+              onChange={setAudio}
+              options={[
+                { value: 'source', label: '原剧集对白原声' },
+                { value: 'clip', label: '切片解说音' },
+                { value: 'none', label: '无声' }
+              ]}
+            />
+          </div>
+        </div>
+        <div className="dw-field">
+          <span className="dw-field-label">索引精度</span>
+          <div className="dw-field-control">
+            <Select
+              value={indexFps}
+              onChange={setIndexFps}
+              options={[
+                { value: 8, label: '8fps · 快速' },
+                { value: 12, label: '12fps · 精准' },
+                { value: 24, label: '24fps · 极致' }
+              ]}
+            />
+          </div>
+        </div>
+      </div>
       <Collapse
         size="small"
         items={[
@@ -196,22 +201,63 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
             key: 'adv',
             label: '高级参数（字幕带遮罩 / 画质 / 去抖与精修）',
             children: (
-              <Space wrap size={[16, 10]}>
-                <span className="dw-sub">顶部遮罩</span>
-                <InputNumber min={0} max={0.75} step={0.01} value={maskTop} onChange={(v) => setMaskTop(v ?? 0)} style={{ width: 80 }} />
-                <span className="dw-sub">底部遮罩</span>
-                <InputNumber min={0} max={0.75} step={0.01} value={maskBottom} onChange={(v) => setMaskBottom(v ?? 0.25)} style={{ width: 80 }} />
-                <span className="dw-sub">中部字幕带</span>
-                <Input value={maskBand} onChange={(e) => setMaskBand(e.target.value)} placeholder="如 0.63,0.78" style={{ width: 120 }} />
-                <span className="dw-sub">画质 CRF<ParamTip tip={CRF_TIP} /></span>
-                <InputNumber min={10} max={28} value={crf} onChange={(v) => setCrf(v ?? 16)} style={{ width: 70 }} />
-                <span className="dw-sub">去量化平滑</span>
-                <Switch checked={despike} onChange={setDespike} />
-                <span className="dw-sub">边界精修</span>
-                <Switch checked={refine} onChange={setRefine} />
-                <span className="dw-sub">精修半径<ParamTip tip={RADIUS_TIP} /></span>
-                <InputNumber min={0} max={16} value={boundsRadius} onChange={(v) => setBoundsRadius(v ?? 6)} style={{ width: 70 }} />
-              </Space>
+              <div className="dw-field-grid is-compact">
+                <div className="dw-field">
+                  <span className="dw-field-label">顶部遮罩</span>
+                  <div className="dw-field-control">
+                    <InputNumber min={0} max={0.75} step={0.01} value={maskTop} onChange={(v) => setMaskTop(v ?? 0)} />
+                  </div>
+                  <span className="dw-field-hint">台标/角标</span>
+                </div>
+                <div className="dw-field">
+                  <span className="dw-field-label">底部遮罩</span>
+                  <div className="dw-field-control">
+                    <InputNumber min={0} max={0.75} step={0.01} value={maskBottom} onChange={(v) => setMaskBottom(v ?? 0.25)} />
+                  </div>
+                  <span className="dw-field-hint">字幕带</span>
+                </div>
+                <div className="dw-field">
+                  <span className="dw-field-label">中部字幕带</span>
+                  <div className="dw-field-control">
+                    <Input value={maskBand} onChange={(e) => setMaskBand(e.target.value)} placeholder="如 0.63,0.78" />
+                  </div>
+                  <span className="dw-field-hint">留空则不遮罩</span>
+                </div>
+                <div className="dw-field">
+                  <span className="dw-field-label">
+                    画质 CRF
+                    <ParamTip tip={CRF_TIP} />
+                  </span>
+                  <div className="dw-field-control">
+                    <InputNumber min={10} max={28} value={crf} onChange={(v) => setCrf(v ?? 16)} />
+                  </div>
+                  <span className="dw-field-hint">越低越接近原画质</span>
+                </div>
+                <div className="dw-field">
+                  <span className="dw-field-label">去量化平滑</span>
+                  <div className="dw-field-control">
+                    <Switch checked={despike} onChange={setDespike} />
+                  </div>
+                  <span className="dw-field-hint">抑制 0/2 抖动</span>
+                </div>
+                <div className="dw-field">
+                  <span className="dw-field-label">边界精修</span>
+                  <div className="dw-field-control">
+                    <Switch checked={refine} onChange={setRefine} />
+                  </div>
+                  <span className="dw-field-hint">±N 帧吸附</span>
+                </div>
+                <div className="dw-field">
+                  <span className="dw-field-label">
+                    精修半径
+                    <ParamTip tip={RADIUS_TIP} />
+                  </span>
+                  <div className="dw-field-control">
+                    <InputNumber min={0} max={16} value={boundsRadius} onChange={(v) => setBoundsRadius(v ?? 6)} />
+                  </div>
+                  <span className="dw-field-hint">单位：帧</span>
+                </div>
+              </div>
             )
           }
         ]}
@@ -285,16 +331,34 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
     else void v.play().catch(() => setVideoErr(true))
   }
 
-  const segStarts = useMemo(() => {
-    const starts: number[] = []
-    let acc = 0
-    for (const s of edl) {
-      starts.push(acc)
-      acc += s.seconds
-    }
-    return starts
-  }, [edl])
   const totalSec = edl.reduce((s, x) => s + x.seconds, 0)
+  const edlSegments = useMemo(
+    () =>
+      edl.map((s) => ({
+        key: s.segmentId,
+        label: KIND_LABEL[s.kind] ?? '片段',
+        color: KIND_COLOR[s.kind] ?? '#52525b',
+        seconds: s.seconds,
+        title: `段${s.segmentId} · ${s.episode || '无出处'} · 原片 ${s.srcInTc || '—'} → ${s.srcOutTc || '—'} · ${fmtSec(s.seconds)}`
+      })),
+    [edl]
+  )
+
+  const hasEdlTimeline = view === 'output' && edl.length > 0
+  // 原爆款切片 / EDL 尚未加载时也保留一个可拖拽的单段轴，避免切回原片后失去定位能力。
+  const timelineTotal = hasEdlTimeline ? totalSec : dur || task.stats?.totalSeconds || 1
+  const timelineSegments = useMemo(
+    () =>
+      hasEdlTimeline
+        ? edlSegments
+        : [{
+            key: `single-${view}`,
+            label: view === 'clip' ? '原爆款切片' : '复刻成片',
+            color: '#3b82f6',
+            seconds: timelineTotal
+          }],
+    [hasEdlTimeline, edlSegments, view, timelineTotal]
+  )
 
   const doRecut = (): void => {
     setBusy(true)
@@ -368,8 +432,7 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
                 onEnded={() => setPlaying(false)}
                 onError={() => setVideoErr(true)}
               />
-              <span className="dw-ptime">{fmtSec(t)}</span>
-              <button type="button" className="dw-play-overlay" onClick={togglePlay} aria-label="播放 / 暂停">
+              <button type="button" className="dw-play-overlay" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
                 {playing ? <PauseOutlined /> : <CaretRightOutlined />}
               </button>
             </>
@@ -409,65 +472,50 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
         </div>
 
         {playable && (
-          <div className="dw-transport">
+          <div className="dw-transport" role="group" aria-label="播放控制">
             <Button
               size="small"
               type="text"
               icon={playing ? <PauseOutlined /> : <CaretRightOutlined />}
               onClick={togglePlay}
-              aria-label="播放 / 暂停"
+              aria-label={playing ? '暂停' : '播放'}
             />
-            <span className="dw-sub dw-mono" style={{ minWidth: 84 }}>
+            <span className="dw-timecode">
               {fmtSec(t)} / {fmtSec(dur || task.stats?.totalSeconds || 0)}
             </span>
-            <Slider
-              min={0}
-              max={dur || task.stats?.totalSeconds || 1}
-              step={0.1}
-              value={Math.min(t, dur || task.stats?.totalSeconds || 1)}
-              onChange={(v: number) => {
-                if (videoRef.current) videoRef.current.currentTime = v
-                setT(v)
-              }}
-              tooltip={{ formatter: (v) => fmtSec(v ?? 0) }}
-              style={{ flex: 1, marginBlock: 0 }}
-            />
+            <span className="dw-spacer" />
+            <span className="dw-sub">拖动下方时间轴定位</span>
             <Button
               size="small"
               type="text"
               icon={muted ? <MutedOutlined /> : <SoundOutlined />}
               onClick={() => setMuted(!muted)}
-              aria-label="静音切换"
+              aria-label={muted ? '取消静音' : '静音'}
+              aria-pressed={muted}
             />
           </div>
         )}
 
-        {edl.length > 0 && view === 'output' && (
+        {playable && (
           <div>
             <div className="dw-sec-title" style={{ marginBottom: 6 }}>
-              复刻结构时间轴（蓝=连续 / 紫=静帧 / 灰=无出处，点击跳转）
+              {hasEdlTimeline ? '复刻结构时间轴' : view === 'clip' ? '原切片时间轴' : '复刻成片时间轴'}
+              <span className="dw-tl-hint">
+                {hasEdlTimeline
+                  ? `共 ${edl.length} 段 · 蓝=连续 / 紫=静帧 / 灰=无出处 · 拖动或点击定位`
+                  : '拖动或点击定位'}
+              </span>
             </div>
-            <div className="dw-tl-strip dw-tl-strip-replica">
-              {edl.map((s, i) => (
-                <Tooltip
-                  key={s.segmentId}
-                  title={`段${s.segmentId} · ${s.episode || '无出处'} · 原片 ${s.srcInTc || '—'} → ${s.srcOutTc || '—'} · ${s.seconds}s`}
-                >
-                  <div
-                    className="dw-tl-seg"
-                    style={{
-                      flexGrow: Math.max(0.2, s.seconds),
-                      background: KIND_COLOR[s.kind] ?? '#52525b'
-                    }}
-                    onClick={() => {
-                      const target = segStarts[i]
-                      if (videoRef.current) videoRef.current.currentTime = target
-                      setT(target)
-                    }}
-                  />
-                </Tooltip>
-              ))}
-            </div>
+            <TimelineScrubber
+              ariaLabel={hasEdlTimeline ? '复刻结构时间轴，拖动定位播放进度' : '视频时间轴，拖动定位播放进度'}
+              duration={timelineTotal}
+              value={Math.min(t, timelineTotal)}
+              segments={timelineSegments}
+              onChange={(v: number) => {
+                if (videoRef.current) videoRef.current.currentTime = v
+                setT(v)
+              }}
+            />
           </div>
         )}
       </section>
@@ -483,7 +531,7 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
               <Tag color="blue">连续 {task.stats.continuous}</Tag>
               <Tag color="purple">静帧 {task.stats.still}</Tag>
               <Tag>无出处 {task.stats.gap}</Tag>
-              <Tag className="dw-mono">{task.stats.totalSeconds}s</Tag>
+              <Tag className="dw-mono">{fmtSec(task.stats.totalSeconds)}</Tag>
               <Tag className="dw-mono">{task.stats.resolution}</Tag>
               <Tag className="dw-mono">{task.stats.fps}fps 原生</Tag>
               <Tag color={task.stats.coverage >= 0.9 ? 'success' : 'warning'}>
@@ -502,28 +550,52 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
           <div className="dw-panel-head">
             <span className="dw-panel-title">重剪参数（复用溯源，秒级发起）</span>
           </div>
-          <Space wrap size={[10, 8]}>
-            <span className="dw-sub">音轨</span>
-            <Select
-              size="small"
-              value={recutAudio}
-              onChange={setRecutAudio}
-              style={{ width: 140 }}
-              options={[
-                { value: 'source', label: '原剧对白原声' },
-                { value: 'clip', label: '切片解说音' },
-                { value: 'none', label: '无声' }
-              ]}
-            />
-            <span className="dw-sub">CRF<ParamTip tip={CRF_TIP} /></span>
-            <InputNumber size="small" min={10} max={28} value={recutCrf} onChange={(v) => setRecutCrf(v ?? 16)} style={{ width: 64 }} />
-            <span className="dw-sub">去抖</span>
-            <Switch size="small" checked={recutDespike} onChange={setRecutDespike} />
-            <span className="dw-sub">精修</span>
-            <Switch size="small" checked={recutRefine} onChange={setRecutRefine} />
-            <span className="dw-sub">半径<ParamTip tip={RADIUS_TIP} /></span>
-            <InputNumber size="small" min={0} max={16} value={recutRadius} onChange={(v) => setRecutRadius(v ?? 6)} style={{ width: 64 }} />
-          </Space>
+          <div className="dw-field-grid is-compact">
+            <div className="dw-field">
+              <span className="dw-field-label">音轨</span>
+              <div className="dw-field-control">
+                <Select
+                  value={recutAudio}
+                  onChange={setRecutAudio}
+                  options={[
+                    { value: 'source', label: '原剧对白原声' },
+                    { value: 'clip', label: '切片解说音' },
+                    { value: 'none', label: '无声' }
+                  ]}
+                />
+              </div>
+            </div>
+            <div className="dw-field">
+              <span className="dw-field-label">
+                CRF
+                <ParamTip tip={CRF_TIP} />
+              </span>
+              <div className="dw-field-control">
+                <InputNumber min={10} max={28} value={recutCrf} onChange={(v) => setRecutCrf(v ?? 16)} />
+              </div>
+            </div>
+            <div className="dw-field">
+              <span className="dw-field-label">去抖</span>
+              <div className="dw-field-control">
+                <Switch checked={recutDespike} onChange={setRecutDespike} />
+              </div>
+            </div>
+            <div className="dw-field">
+              <span className="dw-field-label">精修</span>
+              <div className="dw-field-control">
+                <Switch checked={recutRefine} onChange={setRecutRefine} />
+              </div>
+            </div>
+            <div className="dw-field">
+              <span className="dw-field-label">
+                半径
+                <ParamTip tip={RADIUS_TIP} />
+              </span>
+              <div className="dw-field-control">
+                <InputNumber min={0} max={16} value={recutRadius} onChange={(v) => setRecutRadius(v ?? 6)} />
+              </div>
+            </div>
+          </div>
           <Button
             block
             type="primary"
@@ -549,21 +621,21 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
             scroll={{ y: 300 }}
             dataSource={edl}
             columns={[
-              { title: '#', dataIndex: 'segmentId', width: 44 },
-              { title: '集', dataIndex: 'episode', width: 60, render: (v: string) => v || '—' },
+              { title: '#', dataIndex: 'segmentId', width: 36 },
+              { title: '集', dataIndex: 'episode', width: 50, render: (v: string) => v || '—' },
               {
                 title: '原片入出帧',
-                width: 130,
+                width: 110,
                 render: (_: unknown, r: ReplicaEdlRow) =>
                   r.srcIn >= 0 ? <span className="dw-mono">{r.srcIn}–{r.srcOut}</span> : '—'
               },
               {
                 title: '类型',
                 dataIndex: 'kind',
-                width: 70,
+                width: 58,
                 render: (v: string) => <Tag color={KIND_COLOR[v]} style={{ marginInlineEnd: 0 }}>{KIND_LABEL[v] ?? v}</Tag>
               },
-              { title: '时长', dataIndex: 'seconds', width: 70, render: (v: number) => `${v}s` }
+              { title: '时长', dataIndex: 'seconds', width: 84, render: (v: number) => fmtSec(v) }
             ]}
           />
         </div>
@@ -613,7 +685,7 @@ export default function ReplicaPanel({ d, onImport }: { d: Drama; onImport: () =
     return (
       <div className="dw-panel" style={{ padding: '48px 20px', textAlign: 'center' }}>
         <Empty
-          image={<ImportOutlined style={{ fontSize: 42, color: '#52525b' }} />}
+          image={<ImportOutlined style={{ fontSize: 42, color: 'var(--text-muted)' }} />}
           description="导入一条爆款切片，用本剧原片复刻出干净成片（无需全局分析）"
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={onImport}>
@@ -648,7 +720,7 @@ export default function ReplicaPanel({ d, onImport }: { d: Drama; onImport: () =
                   {r.status !== 'ready' && r.status !== 'fail' && r.status !== 'queue' ? ` ${r.pct}%` : ''}
                 </Tag>
                 <span className="dw-spacer" />
-                <span className="dw-sub dw-mono">{r.stats ? `${r.stats.totalSeconds}s` : ''}</span>
+                <span className="dw-sub dw-mono">{r.stats ? fmtSec(r.stats.totalSeconds) : ''}</span>
               </div>
               <div className="dw-cut-item-title">{r.clipTitle}</div>
               <div className="dw-cut-item-meta">

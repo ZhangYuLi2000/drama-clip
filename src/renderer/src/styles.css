@@ -24,6 +24,7 @@
 :root[data-theme='light'] {
   color-scheme: light;
   accent-color: #2563eb;
+  /* 亮色主题：原生控件/滚动条/初始画布随 color-scheme 切换（dark-mode §2） */
 
   --bg-canvas: #f4f6f9;
   --bg-rail: #ffffff;
@@ -39,7 +40,7 @@
   --text-muted: #64748b;
   --accent: #2563eb;
   --accent-glow: rgba(37, 99, 235, 0.12);
-  --hook-color: #d97706;
+  --hook-color: #b45309;
   --scrollbar-thumb: rgba(15, 23, 42, 0.2);
 }
 
@@ -293,10 +294,92 @@ body {
   margin-bottom: 8px;
 }
 
+.dw-tl-hint {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
 .dw-field-label {
   font-size: 12px;
   color: var(--text-secondary);
   margin-bottom: 4px;
+}
+
+/* ---------- 设置表单栅格（替代 Space + Form.Item 造成的标签错位） ---------- */
+.dw-field-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 16px 18px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.dw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dw-field > .dw-field-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  margin-bottom: 0;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dw-field-control {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  min-width: 0;
+}
+
+.dw-field-control > .ant-select,
+.dw-field-control > .ant-input-number,
+.dw-field-control > .ant-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.dw-field-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  min-height: 15px;
+}
+
+/* 弹窗 / 侧栏内的紧凑参数栅格 */
+.dw-field-grid.is-compact {
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.dw-field-grid.is-compact .dw-field-hint {
+  min-height: 0;
+}
+
+@container main-content (max-width: 1180px) {
+  .dw-field-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container main-content (max-width: 780px) {
+  .dw-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* ---------- 表单自适应 ---------- */
@@ -552,7 +635,12 @@ textarea.dw-auto-textarea {
   gap: 12px;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  /* 矮窗口下 sticky 会裁掉底部且页面滚动不可达，改为内部滚动 */
+  max-height: calc(100dvh - 80px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .dw-player {
@@ -562,7 +650,7 @@ textarea.dw-auto-textarea {
   aspect-ratio: 9 / 16;
   margin: 0 auto;
   border-radius: 12px;
-  background: radial-gradient(120% 80% at 50% 15%, rgba(59, 130, 246, 0.08), transparent 60%), #09090d;
+  background: radial-gradient(120% 80% at 50% 15%, var(--player-glow, rgba(59, 130, 246, 0.08)), transparent 60%), #09090d;
   color: #cbd5e1;
   overflow: clip;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -585,25 +673,11 @@ textarea.dw-auto-textarea {
   text-align: center;
 }
 
-.dw-ptime {
-  position: absolute;
-  top: 10px;
-  inset-inline-end: 10px;
-  font-size: 11px;
-  color: #f4f4f5;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(6px);
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-}
-
 .dw-play-overlay {
   position: absolute;
   inset: 0;
   margin: auto;
+  z-index: 7;
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -643,12 +717,243 @@ textarea.dw-auto-textarea {
 .dw-transport {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-hairline);
   border-radius: 10px;
   padding: 5px 10px;
   min-width: 0;
+}
+
+.dw-timecode {
+  flex: none;
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dw-time-cur {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.dw-time-tot {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dw-ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dw-btn-play-main {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: var(--text-primary);
+  color: var(--bg-stage);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.dw-btn-play-main:hover:not(:disabled) {
+  transform: scale(1.06);
+}
+
+.dw-btn-play-main:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dw-btn-play-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dw-speed-chip {
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.dw-speed-chip:hover {
+  color: var(--text-primary);
+}
+
+.dw-ctrl-on {
+  color: var(--accent) !important;
+  background: var(--accent-glow) !important;
+}
+
+/* ---------- 播放 HUD 与视频内 overlay（叠在深色视频上，不随主题变） ---------- */
+.dw-stage-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dw-now-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hairline);
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.dw-now-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dw-kbd-tips {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.dw-kbd-chip {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hairline);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.dw-beat-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.dw-subtitle-wrap {
+  position: absolute;
+  bottom: 17%;
+  left: 8%;
+  right: 8%;
+  text-align: center;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.dw-subtitle {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+  color: #ffe853;
+  text-shadow:
+    -1.5px -1.5px 0 #000,
+    1.5px -1.5px 0 #000,
+    -1.5px 1.5px 0 #000,
+    1.5px 1.5px 0 #000,
+    0 4px 10px rgba(0, 0, 0, 0.88);
+}
+
+.dw-safezone {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.dw-safezone.is-visible {
+  opacity: 1;
+}
+
+.dw-sz-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 11%;
+  background: rgba(255, 77, 94, 0.16);
+  border-bottom: 1px dashed rgba(255, 77, 94, 0.7);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 4px;
+  font-size: 9px;
+  color: #ff8e98;
+}
+
+.dw-sz-right {
+  position: absolute;
+  right: 8px;
+  bottom: 18%;
+  width: 34px;
+  height: 42%;
+  border: 1px dashed rgba(255, 77, 94, 0.7);
+  background: rgba(255, 77, 94, 0.14);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-around;
+  padding: 6px 0;
+}
+
+.dw-sz-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.dw-sz-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 16%;
+  background: rgba(255, 77, 94, 0.16);
+  border-top: 1px dashed rgba(255, 77, 94, 0.7);
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  font-size: 9px;
+  color: #ff8e98;
 }
 
 .dw-tl-box {
@@ -669,53 +974,240 @@ textarea.dw-auto-textarea {
   min-width: 0;
 }
 
-.dw-tl-strip {
-  display: flex;
-  gap: 2px;
-  height: 26px;
+/* ---------- 磁吸结构时间轴（自绘轨道：磁吸 / 缩放 / scrub tooltip） ---------- */
+.dw-tl2 {
+  position: relative;
   width: 100%;
   min-width: 0;
-  max-width: 100%;
-  padding: 3px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-hairline);
-  border-radius: 8px;
-  overflow: hidden;
+  border-radius: 10px;
+  outline: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.dw-tl-seg {
+.dw-tl2:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.dw-tl2-toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 4px;
-  font-family: inherit;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dw-tl2-tool {
+  height: 23px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
   font-size: 11px;
-  font-weight: 500;
-  color: #fff;
-  min-width: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  flex: none;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.dw-tl2-tool:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.dw-tl2-tool.is-on {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.dw-tl2-hint {
+  color: var(--text-muted);
+  font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 3px;
-  opacity: 0.78;
+  min-width: 0;
+}
+
+.dw-tl2-zoom-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex: none;
+}
+
+.dw-tl2-zoom {
+  width: 84px;
+  accent-color: var(--accent);
   cursor: pointer;
-  transition: opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  flex: none;
 }
 
-.dw-tl-seg:hover {
+.dw-tl2-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.dw-tl2-canvas {
+  position: relative;
+  height: 64px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.dw-tl2-canvas:active {
+  cursor: grabbing;
+}
+
+.dw-tl2-track {
+  position: absolute;
+  inset: 0;
+}
+
+.dw-tl2-block {
+  position: absolute;
+  top: 12px;
+  bottom: 6px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  cursor: pointer;
+  transition: filter 0.12s ease, box-shadow 0.12s ease;
+}
+
+.dw-tl2-block:hover {
+  filter: brightness(1.1);
+}
+
+.dw-tl2-block.is-active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--text-primary), 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 3;
+}
+
+.dw-tl2-block.is-flash {
+  box-shadow: -3px 0 12px var(--accent);
+}
+
+.dw-tl2-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.dw-tl2-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 1px;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dw-tl2-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dw-tl2-ep {
+  font-size: 10px;
+  color: var(--text-secondary);
+  flex: none;
+}
+
+.dw-tl2-sub {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dw-tl2-laser {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  z-index: 14;
+  pointer-events: none;
+}
+
+.dw-tl2-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-primary);
+  z-index: 15;
+  pointer-events: none;
+}
+
+.dw-tl2-cap {
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 12px;
+  height: 11px;
+  background: var(--text-primary);
+  clip-path: polygon(0 0, 100% 0, 100% 58%, 50% 100%, 0 58%);
+  transition: background-color 0.12s ease, transform 0.12s ease;
+}
+
+.dw-tl2-playhead.is-snapped .dw-tl2-cap {
+  background: var(--accent);
+  transform: scale(1.15);
+}
+
+.dw-tl2-tip {
+  position: absolute;
+  top: 38px;
+  transform: translateX(-50%);
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  z-index: 40;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dw-tl2-tip.is-visible {
   opacity: 1;
-  filter: brightness(1.12);
 }
 
-.dw-tl-seg.is-now {
-  opacity: 1;
-  box-shadow: inset 0 0 0 1.5px #ffffff;
-}
-
-.dw-tl-seg:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: -1px;
+.dw-tl2-tip.is-snapped {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* 播放器下方的当前片段实时解释条：彻底防横向溢出 */
@@ -800,25 +1292,6 @@ textarea.dw-auto-textarea {
   height: 6px;
   border-radius: 50%;
   flex: none;
-}
-
-/* 复刻时间轴：段数可达上百，去掉段内 padding、零基准按秒数比例分配宽度；
-   极窄段保底 3px 可点；段数过多时滚动条限制在条内，不撑破布局。 */
-.dw-tl-strip-replica {
-  width: 100%;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-}
-
-.dw-tl-strip-replica .dw-tl-seg {
-  flex-basis: 0;
-  flex-shrink: 1;
-  min-width: 3px;
-  padding: 0;
-  border-radius: 4px;
 }
 
 /* ---------- 右侧大师指令台与文案 ---------- */
@@ -1034,6 +1507,12 @@ textarea.dw-auto-textarea {
 @container main-content (max-width: 1180px) {
   .dw-nle-grid {
     grid-template-columns: 240px minmax(300px, 1fr);
+  }
+  .dw-kbd-tips {
+    display: none;
+  }
+  .dw-tl2-hint {
+    display: none;
   }
   .dw-stage {
     position: static;

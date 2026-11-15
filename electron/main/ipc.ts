@@ -208,7 +208,7 @@ export function registerIpc(): void {
     return ok(null)
   })
 
-  ipcMain.handle('select-video-file', async () => {
+  ipcMain.handle('select-reference-video', async () => {
     const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
     const picked = await dialog.showOpenDialog(parent, {
       title: '选择对标爆款参考视频',

@@ -94,7 +94,7 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
     }
   },
   scan: (dir) => call<ScanResult>('library:scan', dir),
-  pickVideoFile: () => call<string>('select-video-file'),
+  pickVideoFile: () => call<string>('select-reference-video'),
   importDrama: (dir, title, autoStart = true) =>
     call<{ dramaId: string; count: number }>('library:import', { dir, title, autoStart }),
   removeDrama: async (id) => {
@@ -186,10 +186,17 @@ export function findDrama(dramas: Drama[], id: string | null): Drama | undefined
   return dramas.find((d) => d.id === id)
 }
 
+/**
+ * 全站唯一时长格式：mm:ss.d（保留 1 位小数，例：01:16.9 / 00:06.5）。
+ * 播放器、方案列表、结构时间轴、分镜详情、EDL 表格等所有「时长/时间点」都必须复用本函数，
+ * 不要再出现 76.9s / 01:16 / 7s / 6.5s 混用。
+ */
 export function fmtSec(sec: number): string {
-  const m = Math.floor(sec / 60)
-  const s = Math.floor(sec % 60)
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  const safe = Number.isFinite(sec) ? Math.max(0, sec) : 0
+  const totalTenths = Math.round(safe * 10)
+  const m = Math.floor(totalTenths / 600)
+  const s = (totalTenths % 600) / 10
+  return `${String(m).padStart(2, '0')}:${s.toFixed(1).padStart(4, '0')}`
 }
 
 export function fmtSize(bytes: number): string {

@@ -37,8 +37,8 @@ export const RADIUS_TIP: ReactElement = (
 /** 参数旁的小问号图标，悬停显示调参说明。 */
 export function ParamTip({ tip }: { tip: ReactElement }): ReactElement {
   return (
-    <Tooltip title={tip} overlayStyle={{ maxWidth: 380 }}>
-      <QuestionCircleOutlined style={{ marginLeft: 4, color: '#a1a1aa', cursor: 'help' }} />
+    <Tooltip title={tip} styles={{ root: { maxWidth: 380 } }}>
+      <QuestionCircleOutlined role="img" aria-label="参数说明" style={{ marginLeft: 4, color: 'var(--text-muted)', cursor: 'help' }} />
     </Tooltip>
   )
 }
