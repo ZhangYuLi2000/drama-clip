@@ -21,6 +21,13 @@ const INVOKE_CHANNELS = [
   'cut:open-output',
   'cut:export-package',
   'job:stop',
+  'select-video-file',
+  'replica:create',
+  'replica:retry',
+  'replica:recut-only',
+  'replica:delete',
+  'replica:edl',
+  'replica:open-output',
   'settings:get',
   'settings:save'
 ] as const

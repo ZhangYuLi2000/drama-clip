@@ -11,7 +11,11 @@
     "preview": "node scripts/dev-electron.cjs preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web"
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test:replica": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-replica.mts",
+    "test:replica:g3": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-replica-g3.mts",
+    "test:replica:g45": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/test-replica-g45.mts",
+    "smoke:replica": "electron scripts/smoke-replica.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.1",

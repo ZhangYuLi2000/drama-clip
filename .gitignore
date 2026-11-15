@@ -9,3 +9,5 @@ media-cache/
 *.mp4
 scripts/spike-out/
 scripts/diag-act1-raw.txt
+test/.cache/
+acl-recovery/

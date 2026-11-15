@@ -1,0 +1,4 @@
+﻿segment_id,episode,src_in,src_out,src_in_tc,src_out_tc,clip_in,clip_out,kind,seconds
+1,E41,850,960,00:00:34:00,00:00:38:10,0,132,continuous,4.4
+2,E42,0,791,00:00:00:00,00:00:31:16,132,1077,continuous,31.64
+3,E42,802,983,00:00:32:02,00:00:39:08,1077,1293,continuous,7.24

@@ -38,9 +38,10 @@ export interface ModelCfg {
 export interface AiSettings {
   global: ModelCfg
   text: ModelCfg
+  replica: ReplicaSettings
 }
 
-export type AiSettingsPatch = { global?: Partial<ModelCfg>; text?: Partial<ModelCfg> }
+export type AiSettingsPatch = { global?: Partial<ModelCfg>; text?: Partial<ModelCfg>; replica?: Partial<ReplicaSettings> }
 
 export interface Episode {
   id: string
@@ -192,6 +193,99 @@ export interface Drama {
   synthesis?: DramaSynthesis
   global?: DramaGlobal
   cuts?: PromoCut[]
+  replicas?: ReplicaTask[]
+  replicaIndex?: ReplicaIndexState
+}
+
+// ---------------------------------------------------------------- 爆款复刻
+
+export type ReplicaStatus = 'queue' | 'indexing' | 'tracing' | 'cutting' | 'ready' | 'fail'
+export type ReplicaAudio = 'source' | 'clip' | 'none'
+
+export interface ReplicaStats {
+  segments: number
+  continuous: number
+  still: number
+  gap: number
+  totalSeconds: number
+  resolution: string
+  fps: number
+  /** 有出处帧占比 0~1 */
+  coverage: number
+}
+
+export interface ReplicaTask {
+  id: string
+  clipFile: string
+  clipTitle: string
+  status: ReplicaStatus
+  pct: number
+  stageNote?: string
+  audio: ReplicaAudio
+  crf: number
+  despike: boolean
+  refine: boolean
+  boundsRadius: number
+  indexFps: number
+  maskTop: number
+  maskBottom: number
+  /** "0.63,0.78" 或空串 */
+  maskBand: string
+  output?: string
+  edlPath?: string
+  tracePath?: string
+  stats?: ReplicaStats
+  error?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ReplicaIndexState {
+  dir: string
+  indexFps: number
+  builtAt: number
+  epCount: number
+  stale?: boolean
+}
+
+export interface ReplicaSettings {
+  indexFps: number
+  audio: ReplicaAudio
+  crf: number
+  despike: boolean
+  refine: boolean
+  boundsRadius: number
+  maskTop: number
+  maskBottom: number
+  maskBand: string
+  workers: number
+}
+
+export interface CreateReplicaParams {
+  clipFile: string
+  clipTitle?: string
+  audio?: ReplicaAudio
+  crf?: number
+  despike?: boolean
+  refine?: boolean
+  boundsRadius?: number
+  indexFps?: number
+  maskTop?: number
+  maskBottom?: number
+  maskBand?: string
+}
+
+export interface ReplicaEdlRow {
+  segmentId: number
+  episode: string
+  srcIn: number
+  srcOut: number
+  srcInTc: string
+  srcOutTc: string
+  clipIn: number
+  clipOut: number
+  kind: string
+  seconds: number
 }
 
 export interface Library {
@@ -199,13 +293,14 @@ export interface Library {
   dramas: Drama[]
 }
 
-export type JobKind = 'probe' | 'thumb' | 'shots' | 'global' | 'generate-cut' | 'render-cut'
+export type JobKind = 'probe' | 'thumb' | 'shots' | 'global' | 'generate-cut' | 'render-cut' | 'replica'
 
 export interface JobInfo {
   kind: JobKind
   dramaId: string
   episodeId: string
   cutId?: string
+  replicaId?: string
   label: string
   pct: number
 }

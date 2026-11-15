@@ -4,11 +4,14 @@ import path from 'path'
 import type {
   AiSettingsPatch,
   ApiResult,
+  CreateReplicaParams,
   CutStyle,
   Drama,
   Episode,
   GenerateCutParams,
   ModelCfg,
+  ReplicaSettings,
+  ReplicaTask,
   ScanFile,
   ScanResult
 } from '../../src/shared/types'
@@ -22,12 +25,14 @@ import {
   enqueueGenerateCut,
   enqueueGlobal,
   enqueueRegenerateCut,
+  enqueueReplica,
   enqueueRenderCut,
   getJobLogState,
   runningCount,
   stopTasks
 } from './jobs'
 import { fileExists } from './media'
+import { readReplicaEdl } from './replica-engine'
 import { getSettings, saveSettings } from './settings'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.avi', '.flv', '.ts', '.m4v', '.wmv', '.webm'])
@@ -139,6 +144,10 @@ export function registerMediaProtocol(): void {
     const allowed = getLibrary().dramas.some(
       (d) =>
         (d.cuts ?? []).some((c) => c.output && path.normalize(c.output) === norm) ||
+        (d.replicas ?? []).some(
+          (r) =>
+            (r.output && path.normalize(r.output) === norm) || path.normalize(r.clipFile) === norm
+        ) ||
         d.episodes.some(
           (ep) =>
             path.normalize(ep.file) === norm ||
@@ -402,6 +411,122 @@ export function registerIpc(): void {
     return ok(stopTasks(typeof dramaId === 'string' && dramaId ? dramaId : undefined))
   })
 
+  // ---------------------------------------------------------------- 爆款复刻
+
+  ipcMain.handle('select-video-file', async () => {
+    const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const picked = await dialog.showOpenDialog(parent, {
+      title: '选择爆款切片视频',
+      properties: ['openFile'],
+      filters: [{ name: '视频', extensions: ['mp4', 'mov', 'mkv', 'avi', 'flv', 'ts', 'm4v', 'wmv', 'webm'] }]
+    })
+    if (picked.canceled || picked.filePaths.length === 0) return ok({ canceled: true, file: '' })
+    return ok({ canceled: false, file: picked.filePaths[0] })
+  })
+
+  ipcMain.handle('replica:create', (_e, payload: unknown) => {
+    const { dramaId, params } = (payload ?? {}) as { dramaId?: string; params?: CreateReplicaParams }
+    if (typeof dramaId !== 'string' || !params || typeof params.clipFile !== 'string') return fail('参数错误')
+    const drama = findDrama(dramaId)
+    if (!drama) return fail('短剧不存在')
+    if (drama.episodes.length === 0) return fail('该剧没有剧集素材')
+    const clipFile = path.resolve(params.clipFile.trim())
+    if (!fileExists(clipFile)) return fail('爆款切片文件不存在')
+    const s = getSettings().replica
+    const task: ReplicaTask = {
+      id: `rp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      clipFile,
+      clipTitle: (params.clipTitle?.trim() || path.basename(clipFile).replace(/\.[^.]+$/, '')).slice(0, 60),
+      status: 'queue',
+      pct: 0,
+      audio: params.audio ?? s.audio,
+      crf: params.crf ?? s.crf,
+      despike: params.despike ?? s.despike,
+      refine: params.refine ?? s.refine,
+      boundsRadius: params.boundsRadius ?? s.boundsRadius,
+      indexFps: params.indexFps ?? s.indexFps,
+      maskTop: params.maskTop ?? s.maskTop,
+      maskBottom: params.maskBottom ?? s.maskBottom,
+      maskBand: params.maskBand ?? s.maskBand,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    drama.replicas = [task, ...(drama.replicas ?? [])]
+    saveLibrary()
+    broadcastLibrary()
+    if (!enqueueReplica(dramaId, task.id)) return fail('任务入队失败')
+    return ok({ replicaId: task.id })
+  })
+
+  ipcMain.handle('replica:retry', (_e, payload: unknown) => {
+    const { dramaId, replicaId, recutOnly } = (payload ?? {}) as {
+      dramaId?: string; replicaId?: string; recutOnly?: boolean
+    }
+    if (typeof dramaId !== 'string' || typeof replicaId !== 'string') return fail('参数错误')
+    if (!enqueueReplica(dramaId, replicaId, Boolean(recutOnly))) return fail('任务不存在或已在队列中')
+    return ok(null)
+  })
+
+  ipcMain.handle('replica:recut-only', (_e, payload: unknown) => {
+    const { dramaId, replicaId, params } = (payload ?? {}) as {
+      dramaId?: string; replicaId?: string; params?: Partial<CreateReplicaParams>
+    }
+    if (typeof dramaId !== 'string' || typeof replicaId !== 'string') return fail('参数错误')
+    const drama = findDrama(dramaId)
+    const task = drama?.replicas?.find((r) => r.id === replicaId)
+    if (!drama || !task) return fail('复刻任务不存在')
+    if (!task.tracePath || !fileExists(task.tracePath)) return fail('溯源表不存在，请完整重试')
+    if (params) {
+      if (params.audio) task.audio = params.audio
+      if (typeof params.crf === 'number') task.crf = params.crf
+      if (typeof params.despike === 'boolean') task.despike = params.despike
+      if (typeof params.refine === 'boolean') task.refine = params.refine
+      if (typeof params.boundsRadius === 'number') task.boundsRadius = params.boundsRadius
+    }
+    task.updatedAt = Date.now()
+    saveLibrary()
+    broadcastLibrary()
+    if (!enqueueReplica(dramaId, replicaId, true)) return fail('任务已在队列中')
+    return ok(null)
+  })
+
+  ipcMain.handle('replica:delete', (_e, payload: unknown) => {
+    const { dramaId, replicaId } = (payload ?? {}) as { dramaId?: string; replicaId?: string }
+    if (typeof dramaId !== 'string' || typeof replicaId !== 'string') return fail('参数错误')
+    const drama = findDrama(dramaId)
+    const idx = drama?.replicas?.findIndex((r) => r.id === replicaId) ?? -1
+    if (!drama || idx < 0) return fail('复刻任务不存在')
+    const task = drama.replicas![idx]
+    if (task.status === 'queue' || task.status === 'indexing' || task.status === 'tracing' || task.status === 'cutting') {
+      return fail('任务运行中，请先终止')
+    }
+    // 产物目录整体清理（任务独占目录）
+    if (task.output) {
+      try {
+        fs.rmSync(path.dirname(task.output), { recursive: true, force: true })
+      } catch {
+        fs.rmSync(task.output, { force: true })
+      }
+    }
+    drama.replicas!.splice(idx, 1)
+    saveLibrary()
+    broadcastLibrary()
+    return ok(null)
+  })
+
+  ipcMain.handle('replica:edl', (_e, payload: unknown) => {
+    const { dramaId, replicaId } = (payload ?? {}) as { dramaId?: string; replicaId?: string }
+    if (typeof dramaId !== 'string' || typeof replicaId !== 'string') return fail('参数错误')
+    const task = findDrama(dramaId)?.replicas?.find((r) => r.id === replicaId)
+    if (!task?.edlPath || !fileExists(task.edlPath)) return fail('EDL 尚未生成')
+    return ok(readReplicaEdl(task.edlPath))
+  })
+
+  ipcMain.handle('replica:open-output', (_e, file: unknown) => {
+    if (typeof file === 'string' && fileExists(file)) shell.showItemInFolder(file)
+    return ok(null)
+  })
+
   ipcMain.handle('settings:get', () => ok(getSettings()))
 
   ipcMain.handle('settings:save', (_e, patch: unknown) => {
@@ -419,6 +544,21 @@ export function registerIpc(): void {
     const t = cleanCfg(p.text)
     if (g) clean.global = g
     if (t) clean.text = t
+    if (p.replica) {
+      const r = p.replica
+      const out: Partial<ReplicaSettings> = {}
+      if (typeof r.indexFps === 'number' && r.indexFps >= 4 && r.indexFps <= 30) out.indexFps = r.indexFps
+      if (r.audio === 'source' || r.audio === 'clip' || r.audio === 'none') out.audio = r.audio
+      if (typeof r.crf === 'number' && r.crf >= 10 && r.crf <= 28) out.crf = Math.round(r.crf)
+      if (typeof r.despike === 'boolean') out.despike = r.despike
+      if (typeof r.refine === 'boolean') out.refine = r.refine
+      if (typeof r.boundsRadius === 'number' && r.boundsRadius >= 0 && r.boundsRadius <= 16) out.boundsRadius = Math.round(r.boundsRadius)
+      if (typeof r.maskTop === 'number' && r.maskTop >= 0 && r.maskTop <= 0.75) out.maskTop = r.maskTop
+      if (typeof r.maskBottom === 'number' && r.maskBottom >= 0 && r.maskBottom <= 0.75) out.maskBottom = r.maskBottom
+      if (typeof r.maskBand === 'string') out.maskBand = r.maskBand.trim()
+      if (typeof r.workers === 'number' && r.workers >= 1 && r.workers <= 8) out.workers = Math.round(r.workers)
+      clean.replica = out
+    }
     return ok(saveSettings(clean))
   })
 }

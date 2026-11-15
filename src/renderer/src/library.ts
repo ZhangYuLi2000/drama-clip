@@ -3,6 +3,7 @@ import type {
   AiSettings,
   AiSettingsPatch,
   ApiResult,
+  CreateReplicaParams,
   CutStyle,
   Drama,
   GenerateCutParams,
@@ -11,6 +12,7 @@ import type {
   JobLogEntry,
   JobLogState,
   Library,
+  ReplicaEdlRow,
   ScanResult
 } from '../../shared/types'
 
@@ -45,6 +47,13 @@ interface LibraryState {
   clearLogs: () => Promise<void>
   loadSettings: () => Promise<void>
   saveSettings: (patch: AiSettingsPatch) => Promise<void>
+  createReplica: (dramaId: string, params: CreateReplicaParams) => Promise<{ replicaId: string }>
+  retryReplica: (dramaId: string, replicaId: string) => Promise<void>
+  recutReplica: (dramaId: string, replicaId: string, params?: Partial<CreateReplicaParams>) => Promise<void>
+  deleteReplica: (dramaId: string, replicaId: string) => Promise<void>
+  getReplicaEdl: (dramaId: string, replicaId: string) => Promise<ReplicaEdlRow[]>
+  openReplicaOutput: (file: string) => Promise<void>
+  selectVideoFile: () => Promise<{ canceled: boolean; file: string }>
 }
 
 async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
@@ -141,7 +150,29 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   saveSettings: async (patch) => {
     const settings = await call<AiSettings>('settings:save', patch)
     set({ settings })
-  }
+  },
+  createReplica: async (dramaId, params) => {
+    const r = await call<{ replicaId: string }>('replica:create', { dramaId, params })
+    await get().refresh()
+    return r
+  },
+  retryReplica: async (dramaId, replicaId) => {
+    await call<null>('replica:retry', { dramaId, replicaId })
+    await get().refresh()
+  },
+  recutReplica: async (dramaId, replicaId, params) => {
+    await call<null>('replica:recut-only', { dramaId, replicaId, params })
+    await get().refresh()
+  },
+  deleteReplica: async (dramaId, replicaId) => {
+    await call<null>('replica:delete', { dramaId, replicaId })
+    await get().refresh()
+  },
+  getReplicaEdl: (dramaId, replicaId) => call<ReplicaEdlRow[]>('replica:edl', { dramaId, replicaId }),
+  openReplicaOutput: async (file) => {
+    await call<null>('replica:open-output', file)
+  },
+  selectVideoFile: () => call<{ canceled: boolean; file: string }>('select-video-file')
 }))
 
 export function mediaUrl(file: string): string {

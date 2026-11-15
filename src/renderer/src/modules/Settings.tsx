@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
-import { Alert, AutoComplete, Button, Card, Form, Input, Space } from 'antd'
-import type { ModelCfg } from '../../../shared/types'
+import { Alert, AutoComplete, Button, Card, Form, Input, InputNumber, Select, Space, Switch } from 'antd'
+import type { ModelCfg, ReplicaSettings } from '../../../shared/types'
 import { useLibrary } from '../library'
 import { toast } from '../store'
+import { CRF_TIP, ParamTip, RADIUS_TIP } from '../paramTips'
 
 const GLOBAL_OPTIONS = [
   { value: 'wandapi/gemini-4-hydrogen', label: 'wandapi/gemini-4-hydrogen（magpie 中转）' },
@@ -69,12 +70,15 @@ export default function Settings(): ReactElement {
   const saveSettings = useLibrary((s) => s.saveSettings)
   const [global, setGlobal] = useState<ModelCfg>(EMPTY)
   const [text, setText] = useState<ModelCfg>(EMPTY)
+  const [replica, setReplica] = useState<ReplicaSettings | null>(null)
   const [saving, setSaving] = useState(false)
+  const [savingReplica, setSavingReplica] = useState(false)
 
   useEffect(() => {
     if (settings) {
       setGlobal(settings.global)
       setText(settings.text)
+      setReplica(settings.replica)
     }
   }, [settings])
 
@@ -84,6 +88,19 @@ export default function Settings(): ReactElement {
       .then(() => toast('设置已保存'))
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '保存失败', 'info'))
       .finally(() => setSaving(false))
+  }
+
+  const saveReplica = (): void => {
+    if (!replica) return
+    setSavingReplica(true)
+    saveSettings({ replica })
+      .then(() => toast('复刻引擎设置已保存'))
+      .catch((e: unknown) => toast(e instanceof Error ? e.message : '保存失败', 'info'))
+      .finally(() => setSavingReplica(false))
+  }
+
+  const patchReplica = (p: Partial<ReplicaSettings>): void => {
+    setReplica((r) => (r ? { ...r, ...p } : r))
   }
 
   return (
@@ -141,6 +158,75 @@ export default function Settings(): ReactElement {
           </Button>
         </Form>
       </Card>
+
+      {replica && (
+        <Card title="爆款复刻引擎（本地溯源，无需模型/API）" style={{ maxWidth: 720, marginTop: 16 }}>
+          <Form layout="vertical">
+            <Space wrap size={[16, 0]}>
+              <Form.Item label="索引抽帧率" extra="越高越准，索引越大越慢">
+                <Select
+                  value={replica.indexFps}
+                  onChange={(v) => patchReplica({ indexFps: v })}
+                  style={{ width: 150 }}
+                  options={[
+                    { value: 8, label: '8fps · 快速' },
+                    { value: 12, label: '12fps · 精准（推荐）' },
+                    { value: 24, label: '24fps · 极致' }
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="默认音轨">
+                <Select
+                  value={replica.audio}
+                  onChange={(v) => patchReplica({ audio: v })}
+                  style={{ width: 160 }}
+                  options={[
+                    { value: 'source', label: '原剧集对白原声' },
+                    { value: 'clip', label: '切片解说音' },
+                    { value: 'none', label: '无声' }
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label={<>画质 CRF<ParamTip tip={CRF_TIP} /></>} extra="越低越接近原画质">
+                <InputNumber min={10} max={28} value={replica.crf} onChange={(v) => patchReplica({ crf: v ?? 16 })} />
+              </Form.Item>
+              <Form.Item label="计算线程">
+                <InputNumber min={1} max={8} value={replica.workers} onChange={(v) => patchReplica({ workers: v ?? 3 })} />
+              </Form.Item>
+            </Space>
+            <Space wrap size={[16, 0]}>
+              <Form.Item label="顶部遮罩" extra="台标/角标">
+                <InputNumber min={0} max={0.75} step={0.01} value={replica.maskTop} onChange={(v) => patchReplica({ maskTop: v ?? 0 })} />
+              </Form.Item>
+              <Form.Item label="底部遮罩" extra="字幕带">
+                <InputNumber min={0} max={0.75} step={0.01} value={replica.maskBottom} onChange={(v) => patchReplica({ maskBottom: v ?? 0.25 })} />
+              </Form.Item>
+              <Form.Item label="中部字幕带" extra="如 0.63,0.78（竖屏短剧常用）">
+                <Input
+                  value={replica.maskBand}
+                  onChange={(e) => patchReplica({ maskBand: e.target.value })}
+                  placeholder="留空则不遮罩"
+                  style={{ width: 160 }}
+                />
+              </Form.Item>
+            </Space>
+            <Space wrap size={[16, 0]}>
+              <Form.Item label="去量化平滑" extra="消除粗索引 0/2 抖动，碎段减半">
+                <Switch checked={replica.despike} onChange={(v) => patchReplica({ despike: v })} />
+              </Form.Item>
+              <Form.Item label="段边界精修" extra="±N 帧相关吸附到真实帧">
+                <Switch checked={replica.refine} onChange={(v) => patchReplica({ refine: v })} />
+              </Form.Item>
+              <Form.Item label={<>精修半径（帧）<ParamTip tip={RADIUS_TIP} /></>}>
+                <InputNumber min={0} max={16} value={replica.boundsRadius} onChange={(v) => patchReplica({ boundsRadius: v ?? 6 })} />
+              </Form.Item>
+            </Space>
+            <Button type="primary" loading={savingReplica} onClick={saveReplica}>
+              保存复刻设置
+            </Button>
+          </Form>
+        </Card>
+      )}
     </div>
   )
 }

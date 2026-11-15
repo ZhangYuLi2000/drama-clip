@@ -9,9 +9,10 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["electron.vite.config.ts", "electron/**/*.ts", "src/shared/**/*.ts"]
+  "include": ["electron/**/*.ts", "src/shared/**/*.ts"]
 }

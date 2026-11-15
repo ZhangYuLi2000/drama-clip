@@ -467,6 +467,7 @@ textarea.dw-auto-textarea {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
 }
 
 .dw-player {
@@ -574,6 +575,25 @@ textarea.dw-auto-textarea {
   white-space: nowrap;
   padding: 0 6px;
   opacity: 0.9;
+}
+
+/* 复刻时间轴：段数可达上百，去掉段内 padding、零基准按秒数比例分配宽度；
+   极窄段保底 3px 可点；段数过多时滚动条限制在条内，不撑破布局。 */
+.dw-tl-strip-replica {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.dw-tl-strip-replica .dw-tl-seg {
+  flex-basis: 0;
+  flex-shrink: 1;
+  min-width: 3px;
+  padding: 0;
+  border-radius: 4px;
 }
 
 /* ---------- 右侧大师指令台与文案 ---------- */

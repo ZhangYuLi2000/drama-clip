@@ -7,6 +7,7 @@ import {
   DownloadOutlined,
   FolderOpenOutlined,
   GlobalOutlined,
+  ImportOutlined,
   InboxOutlined,
   LeftOutlined,
   MutedOutlined,
@@ -45,6 +46,7 @@ import type { CutStyle, Drama, GlobalScript, PromoCut } from '../../../shared/ty
 import { CUT_STYLES } from '../../../shared/types'
 import { findDrama, fmtSec, mediaUrl, useLibrary } from '../library'
 import { toast, useStore } from '../store'
+import ReplicaPanel, { NewReplicaModal } from './Replica'
 
 const STYLE_COLOR: Record<CutStyle, string> = {
   conflict: 'red',
@@ -701,15 +703,19 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
   const backToProjects = useStore((s) => s.backToProjects)
   const selectedCutId = useStore((s) => s.selectedCutId)
   const selectCut = useStore((s) => s.selectCut)
+  const studioTab = useStore((s) => s.studioTab)
+  const setStudioTab = useStore((s) => s.setStudioTab)
   const rescan = useLibrary((s) => s.rescan)
   const stopTasks = useLibrary((s) => s.stopTasks)
 
   const [analyzeOpen, setAnalyzeOpen] = useState(false)
   const [newCutOpen, setNewCutOpen] = useState(false)
+  const [replicaOpen, setReplicaOpen] = useState(false)
   const [scriptOpen, setScriptOpen] = useState(false)
   const [rescanning, setRescanning] = useState(false)
 
   const cuts = d.cuts ?? []
+  const replicas = d.replicas ?? []
   const activeCut = cuts.find((c) => c.id === selectedCutId) ?? cuts[0] ?? null
   const g = d.global
 
@@ -749,6 +755,15 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
             {g?.status === 'done' ? '重新分析' : '全局分析'}
           </Button>
           <Button
+            icon={<ImportOutlined />}
+            onClick={() => {
+              setStudioTab('replica')
+              setReplicaOpen(true)
+            }}
+          >
+            爆款复刻
+          </Button>
+          <Button
             type="primary"
             icon={<PlusOutlined />}
             disabled={g?.status !== 'done'}
@@ -758,6 +773,26 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
           </Button>
         </Space>
       </div>
+
+      <Segmented
+        value={studioTab}
+        onChange={(v) => setStudioTab(v as 'cuts' | 'replica')}
+        options={[
+          { value: 'cuts', label: `AI 智剪成片${cuts.length > 0 ? ` (${cuts.length})` : ''}` },
+          { value: 'replica', label: `爆款复刻${replicas.length > 0 ? ` (${replicas.length})` : ''}` }
+        ]}
+        style={{ marginBottom: 16 }}
+      />
+
+      {studioTab === 'replica' && (
+        <>
+          <ReplicaPanel d={d} onImport={() => setReplicaOpen(true)} />
+          <NewReplicaModal d={d} open={replicaOpen} onClose={() => setReplicaOpen(false)} />
+        </>
+      )}
+
+      {studioTab === 'cuts' && (
+        <>
 
       {(g?.status === 'run' || g?.status === 'queue') && (
         <Alert
@@ -881,6 +916,9 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
         </div>
       )}
 
+        </>
+      )}
+
       <GlobalAnalyzeModal d={d} open={analyzeOpen} onClose={() => setAnalyzeOpen(false)} />
       <NewCutModal d={d} open={newCutOpen} onClose={() => setNewCutOpen(false)} />
       <GlobalScriptDrawer d={d} open={scriptOpen} onClose={() => setScriptOpen(false)} />
@@ -893,6 +931,7 @@ function ProjectList(): ReactElement {
   const autoAnalyze = useLibrary((s) => s.autoAnalyze)
   const removeDrama = useLibrary((s) => s.removeDrama)
   const openDrama = useStore((s) => s.openDrama)
+  const openReplicaTab = useStore((s) => s.openReplicaTab)
   const setImportOpen = useStore((s) => s.setImportOpen)
   const q = useStore((s) => s.q)
   const setQ = useStore((s) => s.setQ)
@@ -945,6 +984,8 @@ function ProjectList(): ReactElement {
             const st = d.global?.status ?? 'idle'
             const readyN = (d.cuts ?? []).filter((c) => c.status === 'ready').length
             const totalN = (d.cuts ?? []).length
+            const replicaReady = (d.replicas ?? []).filter((r) => r.status === 'ready').length
+            const replicaTotal = (d.replicas ?? []).length
             return (
               <div className="dw-project-card" key={d.id}>
                 <div className="dw-project-top">
@@ -972,11 +1013,22 @@ function ProjectList(): ReactElement {
                   <span>
                     引流成片：<b style={{ color: readyN > 0 ? '#60a5fa' : undefined }}>{readyN}</b> / {totalN} 条就绪
                   </span>
+                  {replicaTotal > 0 && (
+                    <>
+                      <span>·</span>
+                      <span>
+                        复刻：<b style={{ color: replicaReady > 0 ? '#a78bfa' : undefined }}>{replicaReady}</b> / {replicaTotal}
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 <div className="dw-project-actions">
                   <Button type="primary" style={{ flex: 1 }} onClick={() => openDrama(d.id)}>
                     进入成片室
+                  </Button>
+                  <Button icon={<ImportOutlined />} onClick={() => openReplicaTab(d.id)}>
+                    爆款复刻
                   </Button>
                   {st !== 'done' && (
                     <Button

@@ -26,6 +26,14 @@ export function initDb(): void {
             cut.error = '应用重启导致渲染中断，可点击重新渲染'
           }
         }
+        for (const rep of d.replicas ?? []) {
+          if (rep.status === 'queue' || rep.status === 'indexing' || rep.status === 'tracing' || rep.status === 'cutting') {
+            rep.status = rep.output ? 'ready' : 'fail'
+            rep.pct = 0
+            rep.stageNote = undefined
+            rep.error = '应用重启导致任务中断，可点击重试'
+          }
+        }
         for (const ep of d.episodes) {
           if (!ep.ana) ep.ana = 'idle'
           if (ep.asr === 'run' || ep.asr === 'queue') {

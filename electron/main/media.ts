@@ -15,7 +15,7 @@ export function ffmpegBin(): string {
   return p
 }
 
-function ffprobeBin(): string {
+export function ffprobeBin(): string {
   let p: { path: string } | null = null
   try {
     p = req('ffprobe-static') as { path: string }

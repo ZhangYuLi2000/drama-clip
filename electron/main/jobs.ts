@@ -8,6 +8,7 @@ import { generatePromoCut, regeneratePromoCut } from './director'
 import { runGlobalAnalysis, type GlobalRange } from './global'
 import { detectShots, fileExists, makeThumb, probe } from './media'
 import { renderPromoCut } from './render'
+import { runReplicaTask } from './replica-engine'
 import { getEffectiveTextModel, getSettings } from './settings'
 
 interface Job {
@@ -15,6 +16,8 @@ interface Job {
   dramaId: string
   episodeId: string
   cutId?: string
+  replicaId?: string
+  replicaRecutOnly?: boolean
   globalRange?: GlobalRange
   autoCutCount?: number
   genParams?: GenerateCutParams
@@ -65,6 +68,7 @@ function labelOf(kind: JobKind, n: number): string {
   if (kind === 'shots') return `检测第 ${n} 集镜头边界`
   if (kind === 'global') return '全局分幕分析'
   if (kind === 'generate-cut') return 'AI 大师编排切片'
+  if (kind === 'replica') return '爆款复刻'
   return '渲染引流成片'
 }
 
@@ -166,6 +170,24 @@ export function enqueueRenderCut(dramaId: string, cutId: string): boolean {
   return true
 }
 
+export function enqueueReplica(dramaId: string, replicaId: string, recutOnly = false): boolean {
+  const drama = findDrama(dramaId)
+  const task = drama?.replicas?.find((r) => r.id === replicaId)
+  if (!drama || !task) return false
+  if (queue.some((j) => j.kind === 'replica' && j.replicaId === replicaId)) return false
+  if (current && current.kind === 'replica' && current.replicaId === replicaId) return false
+  task.status = 'queue'
+  task.pct = 0
+  task.error = undefined
+  task.stageNote = undefined
+  saveLibrary()
+  emit()
+  queue.push({ kind: 'replica', dramaId, episodeId: '', replicaId, replicaRecutOnly: recutOnly })
+  jobLog('info', `加入队列：${recutOnly ? '重剪' : '爆款复刻'}「${task.clipTitle}」（${drama.title}）`)
+  void pump()
+  return true
+}
+
 export function stopTasks(dramaId?: string): { cleared: number } {
   let cleared = 0
   for (let i = queue.length - 1; i >= 0; i--) {
@@ -187,6 +209,14 @@ export function stopTasks(dramaId?: string): { cleared: number } {
         cut.status = cut.output && fileExists(cut.output) ? 'ready' : 'fail'
         cut.pct = undefined
         cut.error = '已手动终止'
+      }
+    }
+    for (const rep of d.replicas ?? []) {
+      if (rep.status === 'queue' || rep.status === 'indexing' || rep.status === 'tracing' || rep.status === 'cutting') {
+        rep.status = rep.output && fileExists(rep.output) ? 'ready' : 'fail'
+        rep.pct = 0
+        rep.error = '已手动终止'
+        rep.stageNote = undefined
       }
     }
   }
@@ -444,6 +474,63 @@ async function pump(): Promise<void> {
         cut.status = cut.output && fileExists(cut.output) ? 'ready' : 'fail'
         cut.pct = undefined
         cut.error = signal.aborted || msg === '已取消' ? '已手动终止' : msg
+        saveLibrary()
+        if (signal.aborted || msg === '已取消') {
+          jobLog('warn', `${label} 已手动终止`)
+        } else {
+          failCount++
+          jobLog('error', `${label} 失败：${msg}`)
+        }
+      }
+      current = null
+      currentAbort = null
+      emit()
+      continue
+    }
+
+    if (job.kind === 'replica') {
+      const drama = findDrama(job.dramaId)
+      const task = drama?.replicas?.find((r) => r.id === job.replicaId)
+      if (!drama || !task) continue
+      const label = `${job.replicaRecutOnly ? '重剪' : '爆款复刻'}「${task.clipTitle}」`
+      current = { kind: 'replica', dramaId: job.dramaId, episodeId: '', replicaId: task.id, label, pct: 0 }
+      task.status = 'indexing'
+      task.pct = 0
+      task.error = undefined
+      saveLibrary()
+      jobLog('info', `开始：${label}`)
+      emit()
+      try {
+        await runReplicaTask(
+          drama,
+          task,
+          { recutOnly: job.replicaRecutOnly },
+          (pct, stage, note) => {
+            task.pct = pct
+            task.status = stage
+            if (note) task.stageNote = note
+            if (current) current.pct = pct
+            saveLibrary()
+            emit()
+          },
+          (msg) => jobLog('info', msg),
+          signal
+        )
+        task.status = 'ready'
+        task.pct = 100
+        task.stageNote = undefined
+        task.error = undefined
+        task.updatedAt = Date.now()
+        saveLibrary()
+        doneCount++
+        jobLog('info', `${label} 完成：${task.stats?.segments ?? 0} 段 / ${task.stats?.totalSeconds ?? 0}s`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        task.status = task.output && fileExists(task.output) ? 'ready' : 'fail'
+        task.pct = 0
+        task.stageNote = undefined
+        task.error = signal.aborted || msg === '已取消' ? '已手动终止' : msg
+        task.updatedAt = Date.now()
         saveLibrary()
         if (signal.aborted || msg === '已取消') {
           jobLog('warn', `${label} 已手动终止`)
