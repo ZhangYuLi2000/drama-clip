@@ -1,9 +1,10 @@
+import crypto from 'crypto'
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import type { AsrSegment, Drama, PromoCut } from '../../src/shared/types'
 import { cacheDir } from './db'
-import { ffmpegBin, fileExists, run } from './media'
+import { detectLeadingSilenceEnd, ffmpegBin, fileExists, run } from './media'
 
 function safeName(s: string): string {
   return s.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || '智剪成片'
@@ -24,6 +25,14 @@ function fmtSrtTime(sec: number): string {
   const p2 = (n: number): string => String(n).padStart(2, '0')
   const p3 = (n: number): string => String(n).padStart(3, '0')
   return `${p2(h)}:${p2(m)}:${p2(s)},${p3(rem)}`
+}
+
+function segCacheFile(epFile: string, epSize: number, tin: number, tout: number, ratio: string): string {
+  const dir = path.join(cacheDir(), 'seg-cache')
+  fs.mkdirSync(dir, { recursive: true })
+  const key = `${epFile}|${epSize}|${tin.toFixed(2)}|${tout.toFixed(2)}|${ratio}`
+  const hash = crypto.createHash('sha1').update(key).digest('hex').slice(0, 20)
+  return path.join(dir, `seg-${hash}.mp4`)
 }
 
 /** 根据成片 clips 拼接时间轴映射出对应的 .srt 字幕内容，方便用户直接导入剪映 */
@@ -71,10 +80,31 @@ export async function renderPromoCut(
       if (!ep) throw new Error(`第 ${i + 1} 段找不到第 ${clip.epN} 集`)
       if (!fileExists(ep.file)) throw new Error(`第 ${clip.epN} 集原文件不存在：${ep.file}`)
 
-      const seg = path.join(workDir, `seg-${i}.mp4`)
+      // 首段钩子自动静音包络精修：剔除因 2fps 代理量化带来的前导空白，做到划入即出声
+      if (i === 0) {
+        const trimmedIn = await detectLeadingSilenceEnd(ep.file, clip.in, clip.out, signal)
+        if (trimmedIn > clip.in + 0.12) {
+          onLog?.(
+            `首段钩子声学精修：自动剔除前 ${(trimmedIn - clip.in).toFixed(2)}s 静音空白（第 ${clip.epN} 集 ${clip.in.toFixed(2)}s → ${trimmedIn.toFixed(2)}s）`
+          )
+          clip.in = Math.round(trimmedIn * 10) / 10
+        }
+      }
+
+      const cachedSeg = segCacheFile(ep.file, ep.size, clip.in, clip.out, cut.ratio)
+      if (fileExists(cachedSeg) && fs.statSync(cachedSeg).size > 1024) {
+        segFiles.push(cachedSeg)
+        onProgress(Math.round(((i + 1) / cut.clips.length) * 88))
+        onLog?.(
+          `复用高速片段缓存 ${i + 1}/${cut.clips.length}（第 ${clip.epN} 集 ${clip.in.toFixed(1)}-${clip.out.toFixed(1)}s）`
+        )
+        continue
+      }
+
       const dur = Math.max(0.2, clip.out - clip.in)
       const fadeOutStart = Math.max(0, dur - 0.06).toFixed(3)
       const af = `loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:st=0:d=0.04,afade=t=out:st=${fadeOutStart}:d=0.06`
+      const tmpSeg = path.join(workDir, `seg-${i}.mp4`)
 
       await run(
         ffmpegBin(),
@@ -108,16 +138,23 @@ export async function renderPromoCut(
           '48000',
           '-ac',
           '2',
-          seg
+          tmpSeg
         ],
         10 * 60_000,
         8000,
         signal
       )
-      segFiles.push(seg)
+      try {
+        fs.copyFileSync(tmpSeg, cachedSeg)
+        segFiles.push(cachedSeg)
+      } catch {
+        segFiles.push(tmpSeg)
+      }
       onProgress(Math.round(((i + 1) / cut.clips.length) * 88))
       onLog?.(`渲染片段 ${i + 1}/${cut.clips.length}（第 ${clip.epN} 集 ${clip.in.toFixed(1)}-${clip.out.toFixed(1)}s）`)
     }
+
+    cut.actualSec = Math.round(cut.clips.reduce((s, c) => s + Math.max(0.2, c.out - c.in), 0) * 10) / 10
 
     const listFile = path.join(workDir, 'list.txt')
     fs.writeFileSync(listFile, segFiles.map((f) => `file '${f.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'))

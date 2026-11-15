@@ -165,6 +165,58 @@ export async function detectShots(file: string): Promise<number[]> {
   return shots
 }
 
+/**
+ * 检测片段开头的静音空白（修正 2fps 代理视频的时间戳量化偏移），
+ * 若开场存在静音段则返回首个声音爆发前 0.04s 的精确时间点。
+ */
+export async function detectLeadingSilenceEnd(
+  file: string,
+  startSec: number,
+  clipOutSec: number,
+  signal?: AbortSignal
+): Promise<number> {
+  const clipDur = clipOutSec - startSec
+  if (clipDur <= 2.2) return startSec
+  const scanDur = Math.min(2.2, clipDur - 1.5)
+  if (scanDur <= 0.25) return startSec
+  try {
+    const { stderr } = await run(
+      ffmpegBin(),
+      [
+        '-nostats',
+        '-ss',
+        startSec.toFixed(3),
+        '-t',
+        scanDur.toFixed(3),
+        '-i',
+        file,
+        '-vn',
+        '-af',
+        'silencedetect=noise=-32dB:d=0.14',
+        '-f',
+        'null',
+        '-'
+      ],
+      15_000,
+      32_768,
+      signal
+    )
+    const startMatch = /silence_start:\s*([0-9.]+)/.exec(stderr)
+    const endMatch = /silence_end:\s*([0-9.]+)/.exec(stderr)
+    if (startMatch && endMatch) {
+      const sStart = Number(startMatch[1])
+      const sEnd = Number(endMatch[1])
+      if (Number.isFinite(sStart) && Number.isFinite(sEnd) && sStart <= 0.15 && sEnd > 0.16 && sEnd <= scanDur) {
+        const trimmed = Math.round((startSec + Math.max(0, sEnd - 0.04)) * 100) / 100
+        if (clipOutSec - trimmed >= 1.5) return trimmed
+      }
+    }
+  } catch {
+    // 忽略静音探测异常，回退原起点
+  }
+  return startSec
+}
+
 export function fileExists(file: string): boolean {
   try {
     return fs.statSync(file).isFile()

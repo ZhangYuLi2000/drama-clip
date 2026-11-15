@@ -114,6 +114,7 @@ export interface DramaGlobal {
 }
 
 export type CutStyle = 'conflict' | 'reversal' | 'suspense'
+export type CutMode = 'independent' | 'hook-matrix' | 'viral-clone'
 
 export interface CutStyleMeta {
   name: string
@@ -143,6 +144,13 @@ export const CUT_STYLES: Record<CutStyle, CutStyleMeta> = {
   }
 }
 
+export interface ViralBeat {
+  role: string
+  sec: number
+  emotion: string
+  desc: string
+}
+
 export interface CutClip {
   epId: string
   epN: number
@@ -157,6 +165,9 @@ export interface PromoCut {
   id: string
   title: string
   style: CutStyle
+  mode?: CutMode
+  matrixGroupId?: string
+  beats?: ViralBeat[]
   ratio: '9:16' | '16:9'
   targetSec: number
   actualSec: number
@@ -178,10 +189,13 @@ export interface PromoCut {
 
 export interface GenerateCutParams {
   style: CutStyle
+  mode?: CutMode
   targetSec: number
   ratio: '9:16' | '16:9'
   count?: number
   prompt?: string
+  refVideoPath?: string
+  refCopy?: string
 }
 
 export interface Drama {

@@ -4,7 +4,7 @@ import path from 'path'
 import type { CutStyle, GenerateCutParams, JobInfo, JobKind, JobLogEntry, JobLogState } from '../../src/shared/types'
 import { CUT_STYLES } from '../../src/shared/types'
 import { allEpisodes, cacheDir, findDrama, findEpisode, getLibrary, saveLibrary } from './db'
-import { generatePromoCut, regeneratePromoCut } from './director'
+import { analyzeViralBenchmark, generateHookMatrixCuts, generatePromoCut, regeneratePromoCut } from './director'
 import { runGlobalAnalysis, type GlobalRange } from './global'
 import { detectShots, fileExists, makeThumb, probe } from './media'
 import { cleanupCutFiles, renderPromoCut } from './render'
@@ -109,6 +109,26 @@ export function enqueueGlobal(dramaId: string, range: GlobalRange, autoCutCount 
 export function enqueueGenerateCut(dramaId: string, params: GenerateCutParams): boolean {
   if (!findDrama(dramaId)) return false
   const total = Math.max(1, Math.min(6, Math.round(params.count ?? 1)))
+  const mode = params.mode ?? 'independent'
+
+  // 「1 主体 × N 钩子」赛马矩阵模式：单次任务生成全部钩子变体并自动复用主干片段极速渲染
+  if (mode === 'hook-matrix' && total > 1) {
+    queue.push({
+      kind: 'generate-cut',
+      dramaId,
+      episodeId: '',
+      genParams: { ...params, count: total },
+      variantIndex: 1,
+      totalVariants: total
+    })
+    jobLog(
+      'info',
+      `加入队列：AI 黄金前 3 秒赛马矩阵（1 主体 × ${total} 钩子 · 主干缓存秒级复用）`
+    )
+    void pump()
+    return true
+  }
+
   for (let i = 1; i <= total; i++) {
     queue.push({
       kind: 'generate-cut',
@@ -119,7 +139,9 @@ export function enqueueGenerateCut(dramaId: string, params: GenerateCutParams): 
       totalVariants: total
     })
   }
-  jobLog('info', `加入队列：AI 大师编排「${CUT_STYLES[params.style].name}」切片 × ${total} 条（直接复用全剧分析缓存，无需重扫视频）`)
+  const modeLabel =
+    mode === 'viral-clone' ? '对标爆款 1:1 节拍复刻' : `「${CUT_STYLES[params.style].name}」切片`
+  jobLog('info', `加入队列：AI 大师编排${modeLabel} × ${total} 条（复用全剧缓存与两阶段因果检索）`)
   void pump()
   return true
 }
@@ -369,14 +391,23 @@ async function pump(): Promise<void> {
       const drama = findDrama(job.dramaId)
       if (!drama) continue
       const isRegen = Boolean(job.cutId)
+      const isMatrix = job.genParams?.mode === 'hook-matrix' && (job.totalVariants ?? 1) > 1
+      const isClone = job.genParams?.mode === 'viral-clone'
       const batchSuffix =
-        (job.totalVariants ?? 1) > 1 ? `（第 ${job.variantIndex}/${job.totalVariants} 条）` : ''
-      const label = isRegen ? `AI 重剪《${drama.title}》` : `AI 编排引流成片《${drama.title}》${batchSuffix}`
+        !isMatrix && (job.totalVariants ?? 1) > 1 ? `（第 ${job.variantIndex}/${job.totalVariants} 条）` : ''
+      const label = isRegen
+        ? `AI 重剪《${drama.title}》`
+        : isMatrix
+          ? `AI 赛马矩阵（1主体×${job.totalVariants}钩子）《${drama.title}》`
+          : isClone
+            ? `对标爆款 1:1 复刻《${drama.title}》${batchSuffix}`
+            : `AI 编排引流成片《${drama.title}》${batchSuffix}`
       current = { kind: 'generate-cut', dramaId: job.dramaId, episodeId: '', cutId: job.cutId, label, pct: 20 }
       jobLog('info', `开始：${label}`)
       emit()
       try {
         const cfg = getEffectiveTextModel()
+        const globalCfg = getSettings().global
         if (isRegen && job.cutId) {
           const idx = (drama.cuts ?? []).findIndex((c) => c.id === job.cutId)
           if (idx < 0) throw new Error('待重剪的切片方案不存在')
@@ -394,14 +425,44 @@ async function pump(): Promise<void> {
           saveLibrary()
           jobLog('info', `AI 重剪完成：「${cut.title}」v${cut.revision}（${cut.actualSec}s · ${tokens} tokens），开始自动渲染`)
           if (!signal.aborted) enqueueRenderCut(drama.id, cut.id)
+        } else if (job.genParams && isMatrix) {
+          const { cuts, tokens } = await generateHookMatrixCuts(
+            drama,
+            job.genParams,
+            cfg,
+            job.totalVariants ?? 3,
+            signal
+          )
+          drama.cuts = [...cuts, ...(drama.cuts ?? [])]
+          saveLibrary()
+          jobLog(
+            'info',
+            `AI 赛马矩阵编排完成：一次性产出 ${cuts.length} 条钩子变体（${tokens} tokens），开始共享主干极速渲染`
+          )
+          if (!signal.aborted) {
+            for (const c of cuts) enqueueRenderCut(drama.id, c.id)
+          }
         } else if (job.genParams) {
+          let benchmark: { beats: import('../../src/shared/types').ViralBeat[]; hookPattern: string; pacingNote: string } | undefined
+          if (job.genParams.mode === 'viral-clone' && (job.genParams.refVideoPath || job.genParams.refCopy)) {
+            const bm = await analyzeViralBenchmark(
+              job.genParams.refVideoPath,
+              job.genParams.refCopy,
+              globalCfg,
+              cfg,
+              (msg) => jobLog('info', msg),
+              signal
+            )
+            benchmark = { beats: bm.beats, hookPattern: bm.hookPattern, pacingNote: bm.pacingNote }
+          }
           const { cut, tokens } = await generatePromoCut(
             drama,
             job.genParams,
             cfg,
             job.variantIndex ?? 1,
             job.totalVariants ?? 1,
-            signal
+            signal,
+            benchmark
           )
           drama.cuts = [cut, ...(drama.cuts ?? [])]
           saveLibrary()

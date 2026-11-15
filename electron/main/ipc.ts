@@ -208,6 +208,17 @@ export function registerIpc(): void {
     return ok(null)
   })
 
+  ipcMain.handle('select-video-file', async () => {
+    const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const picked = await dialog.showOpenDialog(parent, {
+      title: '选择对标爆款参考视频',
+      properties: ['openFile'],
+      filters: [{ name: '视频文件', extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'] }]
+    })
+    if (picked.canceled || picked.filePaths.length === 0) return ok('')
+    return ok(picked.filePaths[0])
+  })
+
   ipcMain.handle('library:scan', (_e, dir: unknown) => {
     if (typeof dir !== 'string' || !dir.trim()) return fail('请先选择素材目录')
     return scanDir(path.resolve(dir.trim()))

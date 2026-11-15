@@ -5,6 +5,8 @@ import {
   CopyOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  ExperimentOutlined,
+  FireOutlined,
   FolderOpenOutlined,
   GlobalOutlined,
   ImportOutlined,
@@ -19,7 +21,8 @@ import {
   ScissorOutlined,
   SoundOutlined,
   StopOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  VideoCameraAddOutlined
 } from '@ant-design/icons'
 import {
   Alert,
@@ -42,7 +45,7 @@ import {
   Tag,
   Tooltip
 } from 'antd'
-import type { CutStyle, Drama, GlobalScript, PromoCut } from '../../../shared/types'
+import type { CutMode, CutStyle, Drama, GlobalScript, PromoCut } from '../../../shared/types'
 import { CUT_STYLES } from '../../../shared/types'
 import { findDrama, fmtSec, mediaUrl, useLibrary } from '../library'
 import { toast, useStore } from '../store'
@@ -149,7 +152,7 @@ function GlobalAnalyzeModal({ d, open, onClose }: { d: Drama; open: boolean; onC
         showIcon
         style={{ marginBottom: 14 }}
         message="重度视频分析只需跑 1 次，后续生成任意多条切片都直接复用本地缓存"
-        description="整剧自动分幕提取剧情、人物、高光与句级台词，后续无论是「新剪一条」还是「大师重剪」均无需重新扫视频。"
+        description="整剧自动分幕提取剧情、人物、高光与句级台词，后续无论是「新剪一条」「前3秒赛马矩阵」还是「对标爆款复刻」均无需重新扫原剧。"
       />
       <Space style={{ marginBottom: 10 }}>
         <span>分析范围：第</span>
@@ -194,18 +197,57 @@ function GlobalAnalyzeModal({ d, open, onClose }: { d: Drama; open: boolean; onC
 
 function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: () => void }): ReactElement {
   const generateCut = useLibrary((s) => s.generateCut)
+  const pickVideoFile = useLibrary((s) => s.pickVideoFile)
+
+  const [mode, setMode] = useState<CutMode>('independent')
   const [style, setStyle] = useState<CutStyle>('conflict')
   const [targetSec, setTargetSec] = useState(45)
   const [ratio, setRatio] = useState<'9:16' | '16:9'>('9:16')
   const [count, setCount] = useState(1)
   const [prompt, setPrompt] = useState('')
+  const [refVideoPath, setRefVideoPath] = useState('')
+  const [refCopy, setRefCopy] = useState('')
   const [busy, setBusy] = useState(false)
 
+  const changeMode = (nextMode: CutMode): void => {
+    setMode(nextMode)
+    if (nextMode === 'hook-matrix' && count < 2) setCount(3)
+    if (nextMode === 'viral-clone') setCount(1)
+  }
+
+  const pickRefVideo = (): void => {
+    pickVideoFile()
+      .then((file) => {
+        if (file) setRefVideoPath(file)
+      })
+      .catch(() => toast('无法打开视频选择器', 'info'))
+  }
+
   const submit = (): void => {
+    if (mode === 'viral-clone' && !refVideoPath && !refCopy.trim() && !prompt.trim()) {
+      toast('在「对标爆款 1:1 复刻」模式下，请选择一条对标参考视频或输入对标爆款文案/母版', 'info')
+      return
+    }
     setBusy(true)
-    generateCut(d.id, { style, targetSec, ratio, count, prompt: prompt.trim() || undefined })
+    const effectiveCount = mode === 'hook-matrix' ? Math.max(2, count) : count
+    generateCut(d.id, {
+      style,
+      mode,
+      targetSec,
+      ratio,
+      count: effectiveCount,
+      prompt: prompt.trim() || undefined,
+      refVideoPath: mode === 'viral-clone' && refVideoPath ? refVideoPath : undefined,
+      refCopy: mode === 'viral-clone' && refCopy.trim() ? refCopy.trim() : undefined
+    })
       .then(() => {
-        toast(`已加入 AI 大师编排队列（共 ${count} 条，复用本地全剧缓存秒级编排）`)
+        const msg =
+          mode === 'hook-matrix'
+            ? `已启动「1 主体 × ${effectiveCount} 钩子」赛马矩阵（主干片段缓存秒级复用）`
+            : mode === 'viral-clone'
+              ? '已启动对标爆款 Beat Sheet 解构与 1:1 槽位复刻'
+              : `已加入 AI 大师编排队列（共 ${effectiveCount} 条，两阶段因果检索秒级编排）`
+        toast(msg)
         setPrompt('')
         onClose()
       })
@@ -215,16 +257,43 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
 
   return (
     <Modal
-      title="AI 智剪引流成片（直接复用全剧分析缓存）"
+      title="AI 智剪引流成片（因果链聚类 · 赛马矩阵 · 对标爆款复刻）"
       open={open}
       onCancel={onClose}
       onOk={submit}
-      okText={`立即生成 ${count} 条成片`}
+      okText={
+        mode === 'hook-matrix'
+          ? `生成 ${Math.max(2, count)} 条钩子赛马矩阵`
+          : mode === 'viral-clone'
+            ? '解构对标爆款并复刻出片'
+            : `立即生成 ${count} 条成片`
+      }
       cancelText="取消"
       confirmLoading={busy}
-      width={580}
+      width={620}
     >
-      <div className="dw-field-label">剪辑风格</div>
+      <div className="dw-field-label">智剪算法模式</div>
+      <Segmented
+        block
+        value={mode}
+        onChange={(v) => changeMode(v as CutMode)}
+        options={[
+          { value: 'independent', label: '多思路独立智剪', icon: <ThunderboltOutlined /> },
+          { value: 'hook-matrix', label: '1主体 × N钩子赛马矩阵', icon: <ExperimentOutlined /> },
+          { value: 'viral-clone', label: '对标爆款 1:1 复刻', icon: <FireOutlined /> }
+        ]}
+        style={{ marginBottom: 8 }}
+      />
+      <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
+        {mode === 'independent' &&
+          '自动聚类全剧跨集因果冲突链，通过两阶段漏斗检索锁定同一条矛盾主线，每条方案独立选材编排。'}
+        {mode === 'hook-matrix' &&
+          '买量投流标准赛马：固定 1 套高转化同主线爽点主干，自动搭配 N 个不同切入角度的黄金前 3-6 秒钩子，主干渲染缓存秒级复用。'}
+        {mode === 'viral-clone' &&
+          '上传一条同行跑爆的参考视频（或粘贴爆款文案），AI 自动提取其 Beat Sheet 节拍骨架与情绪极性曲线，并 1:1 映射到本地短剧。'}
+      </p>
+
+      <div className="dw-field-label">叙事基调风格</div>
       <Segmented
         block
         value={style}
@@ -242,13 +311,17 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
       <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
         {CUT_STYLES[style].desc}
       </p>
+
       <Space wrap style={{ marginBottom: 14 }}>
-        <span className="dw-sub">生成条数</span>
+        <span className="dw-sub">{mode === 'hook-matrix' ? '赛马钩子数' : '生成条数'}</span>
         <Select
-          value={count}
+          value={mode === 'hook-matrix' ? Math.max(2, count) : count}
           onChange={setCount}
-          style={{ width: 110 }}
-          options={[1, 2, 3, 4, 5].map((v) => ({ value: v, label: `连出 ${v} 条` }))}
+          style={{ width: 118 }}
+          options={(mode === 'hook-matrix' ? [2, 3, 4, 5] : [1, 2, 3, 4, 5]).map((v) => ({
+            value: v,
+            label: mode === 'hook-matrix' ? `${v} 个钩子变体` : `连出 ${v} 条`
+          }))}
         />
         <span className="dw-sub">目标时长</span>
         <Select
@@ -269,6 +342,32 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
         />
       </Space>
 
+      {mode === 'viral-clone' && (
+        <div className="dw-copy-block" style={{ marginBottom: 12 }}>
+          <div className="dw-field-label">对标爆款参考视频（可选 · 自动抽帧提取 Beat Sheet 节拍并本地缓存）</div>
+          <div className="dw-dir" style={{ marginBottom: 8 }}>
+            <span className="dw-dir-path" title={refVideoPath}>
+              {refVideoPath || '未选择参考视频（可仅靠下方对标文案/母版复刻）'}
+            </span>
+            {refVideoPath && (
+              <Button size="small" type="text" onClick={() => setRefVideoPath('')}>
+                清除
+              </Button>
+            )}
+            <Button size="small" icon={<VideoCameraAddOutlined />} onClick={pickRefVideo}>
+              选择对标视频
+            </Button>
+          </div>
+          <div className="dw-field-label">对标爆款台词 / 结构描述（可选）</div>
+          <Input.TextArea
+            className="dw-auto-textarea"
+            value={refCopy}
+            onChange={(e) => setRefCopy(e.target.value)}
+            placeholder="粘贴外部爆款切片的台词文案或分镜节拍，AI 将提取其情绪曲线与钩子机制并复刻到本剧"
+          />
+        </div>
+      )}
+
       <div className="dw-field-label">一键套用爆款复刻母版（点击自动填入结构与参数）</div>
       <div className="dw-tpl-grid">
         {VIRAL_TEMPLATES.map((tpl) => (
@@ -288,12 +387,12 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
         ))}
       </div>
 
-      <div className="dw-field-label">补充剪辑 / 对标复刻要求（可选 · 自动预筛未使用的黄金钩子）</div>
+      <div className="dw-field-label">补充剪辑 / 主线锁定要求（可选 · 自动预筛未使用的黄金钩子）</div>
       <Input.TextArea
         className="dw-auto-textarea"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="可粘贴对标爆款的结构节拍，或指定主线：例如重点突出女主亮明千金身份打脸反派，把第 6 集的耳光放最前面做钩子"
+        placeholder="例如：重点突出女主亮明千金身份打脸反派，把第 6 集的耳光放最前面做钩子"
       />
     </Modal>
   )
@@ -478,13 +577,23 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
       {/* 中央监视器 */}
       <section className="dw-stage" aria-label="成片监视器">
         <div className="dw-panel-head" style={{ marginBottom: 0 }}>
-          <Space size={8} style={{ minWidth: 0, flex: 1 }}>
+          <Space size={6} wrap style={{ minWidth: 0, flex: 1 }}>
             <span className="dw-panel-title" title={cut.title}>
               {cut.title}
             </span>
             <Tag color={STYLE_COLOR[cut.style]} style={{ marginInlineEnd: 0 }}>
               {CUT_STYLES[cut.style].name}
             </Tag>
+            {cut.mode === 'hook-matrix' && (
+              <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                赛马矩阵
+              </Tag>
+            )}
+            {cut.mode === 'viral-clone' && (
+              <Tag color="volcano" style={{ marginInlineEnd: 0 }}>
+                对标复刻
+              </Tag>
+            )}
             <Tag className="dw-mono" style={{ marginInlineEnd: 0 }}>
               v{cut.revision}
             </Tag>
@@ -637,7 +746,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
             <div className="dw-tl-active-card">
               <div className="dw-tl-active-top">
                 <Tag
-                   style={{
+                  style={{
                     marginInlineEnd: 0,
                     borderColor: 'transparent',
                     background: ROLE_HEX[currentSeg.c.role] ?? '#3b82f6',
@@ -811,6 +920,22 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               {cut.directorNote ? ` · ${cut.directorNote}` : ''}
             </p>
           </div>
+
+          {cut.beats && cut.beats.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div className="dw-field-label">对标爆款 Beat Sheet 节拍骨架</div>
+              <div className="dw-tl-legend" style={{ maxHeight: 88 }}>
+                {cut.beats.map((b, i) => (
+                  <span key={i} className="dw-tl-pill" title={`${b.emotion} · ${b.desc}`}>
+                    <span className="dw-tl-dot" style={{ background: ROLE_HEX[b.role] ?? '#3b82f6' }} />
+                    <span className="dw-mono">B{i + 1}</span>
+                    <span>{b.role}</span>
+                    <span className="dw-mono">{b.sec}s</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="dw-panel">
@@ -1036,6 +1161,16 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
                     <Tag color={STYLE_COLOR[c.style]} style={{ marginInlineEnd: 0 }}>
                       {CUT_STYLES[c.style].name}
                     </Tag>
+                    {c.mode === 'hook-matrix' && (
+                      <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                        赛马
+                      </Tag>
+                    )}
+                    {c.mode === 'viral-clone' && (
+                      <Tag color="volcano" style={{ marginInlineEnd: 0 }}>
+                        复刻
+                      </Tag>
+                    )}
                     <Tag className="dw-mono" style={{ marginInlineEnd: 0 }}>
                       v{c.revision}
                     </Tag>
@@ -1067,7 +1202,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
               disabled={g?.status !== 'done'}
               onClick={() => setNewCutOpen(true)}
             >
-              AI 再剪新思路（可批量）
+              AI 再剪新思路 / 赛马 / 复刻
             </Button>
           </aside>
 
@@ -1185,7 +1320,7 @@ function ProjectList(): ReactElement {
                   )}
                   <span>·</span>
                   <span>
-                    引流成片：<b style={{ color: readyN > 0 ? '#60a5fa' : undefined }}>{readyN}</b> / {totalN} 条就绪
+                    引流成片：<b style={{ color: readyN > 0 ? 'var(--accent)' : undefined }}>{readyN}</b> / {totalN} 条就绪
                   </span>
                   {replicaTotal > 0 && (
                     <>

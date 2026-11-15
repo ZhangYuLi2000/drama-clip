@@ -26,6 +26,7 @@ interface LibraryState {
   settings: AiSettings | null
   refresh: () => Promise<void>
   scan: (dir: string) => Promise<ScanResult>
+  pickVideoFile: () => Promise<string>
   importDrama: (dir: string, title: string, autoStart?: boolean) => Promise<{ dramaId: string; count: number }>
   removeDrama: (id: string) => Promise<void>
   rescan: (id: string) => Promise<{ added: number }>
@@ -93,6 +94,7 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
     }
   },
   scan: (dir) => call<ScanResult>('library:scan', dir),
+  pickVideoFile: () => call<string>('select-video-file'),
   importDrama: (dir, title, autoStart = true) =>
     call<{ dramaId: string; count: number }>('library:import', { dir, title, autoStart }),
   removeDrama: async (id) => {

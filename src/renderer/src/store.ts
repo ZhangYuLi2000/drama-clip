@@ -3,6 +3,35 @@ import { create } from 'zustand'
 
 export type Screen = 'studio' | 'queue' | 'settings'
 export type StudioTab = 'cuts' | 'replica'
+export type ThemeMode = 'dark' | 'light' | 'system'
+
+const THEME_STORAGE_KEY = 'dw-theme-mode'
+
+function readInitialThemeMode(): ThemeMode {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY)
+    if (saved === 'dark' || saved === 'light' || saved === 'system') return saved
+  } catch {
+    // ignore
+  }
+  return 'dark'
+}
+
+export function resolveTheme(mode: ThemeMode): 'dark' | 'light' {
+  if (mode === 'system' && typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  }
+  return mode === 'light' ? 'light' : 'dark'
+}
+
+export function applyDomTheme(mode: ThemeMode): 'dark' | 'light' {
+  const resolved = resolveTheme(mode)
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = resolved
+    document.documentElement.style.colorScheme = resolved
+  }
+  return resolved
+}
 
 interface StoreState {
   screen: Screen
@@ -12,6 +41,8 @@ interface StoreState {
   selectedReplicaId: string | null
   importOpen: boolean
   q: string
+  themeMode: ThemeMode
+  resolvedTheme: 'dark' | 'light'
 }
 
 interface Actions {
@@ -24,6 +55,8 @@ interface Actions {
   openReplicaTab: (dramaId: string) => void
   setImportOpen: (open: boolean) => void
   setQ: (q: string) => void
+  setThemeMode: (mode: ThemeMode) => void
+  cycleThemeMode: () => void
 }
 
 export function toast(msg: string, type: 'success' | 'info' = 'success'): void {
@@ -43,7 +76,10 @@ function withViewTransition(fn: () => void): void {
   }
 }
 
-export const useStore = create<StoreState & Actions>()((set) => ({
+const initMode = readInitialThemeMode()
+const initResolved = applyDomTheme(initMode)
+
+export const useStore = create<StoreState & Actions>()((set, get) => ({
   screen: 'studio',
   selectedDramaId: null,
   selectedCutId: null,
@@ -51,6 +87,8 @@ export const useStore = create<StoreState & Actions>()((set) => ({
   selectedReplicaId: null,
   importOpen: false,
   q: '',
+  themeMode: initMode,
+  resolvedTheme: initResolved,
 
   goto: (screen) => {
     withViewTransition(() => {
@@ -76,5 +114,31 @@ export const useStore = create<StoreState & Actions>()((set) => ({
     })
   },
   setImportOpen: (importOpen) => set({ importOpen }),
-  setQ: (q) => set({ q })
+  setQ: (q) => set({ q }),
+  setThemeMode: (themeMode) => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, themeMode)
+    } catch {
+      // ignore
+    }
+    const resolvedTheme = applyDomTheme(themeMode)
+    set({ themeMode, resolvedTheme })
+  },
+  cycleThemeMode: () => {
+    const order: ThemeMode[] = ['dark', 'light', 'system']
+    const cur = get().themeMode
+    const next = order[(order.indexOf(cur) + 1) % order.length]
+    get().setThemeMode(next)
+  }
 }))
+
+if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+  const mql = window.matchMedia('(prefers-color-scheme: light)')
+  mql.addEventListener?.('change', () => {
+    const state = useStore.getState()
+    if (state.themeMode === 'system') {
+      const resolvedTheme = applyDomTheme('system')
+      useStore.setState({ resolvedTheme })
+    }
+  })
+}

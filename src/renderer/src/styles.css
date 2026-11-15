@@ -4,9 +4,12 @@
   interpolate-size: allow-keywords;
 
   --bg-canvas: #09090b;
+  --bg-rail: #0c0c0f;
+  --bg-topbar: rgba(9, 9, 11, 0.85);
   --bg-surface: #111114;
   --bg-elevated: #18181c;
   --bg-hover: #1f1f26;
+  --bg-stage: #050507;
   --border-hairline: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.16);
   --text-primary: #f4f4f5;
@@ -14,6 +17,30 @@
   --text-muted: #71717a;
   --accent: #3b82f6;
   --accent-glow: rgba(59, 130, 246, 0.16);
+  --hook-color: #fbbf24;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  accent-color: #2563eb;
+
+  --bg-canvas: #f4f6f9;
+  --bg-rail: #ffffff;
+  --bg-topbar: rgba(255, 255, 255, 0.88);
+  --bg-surface: #ffffff;
+  --bg-elevated: #f8fafc;
+  --bg-hover: #f1f5f9;
+  --bg-stage: #ffffff;
+  --border-hairline: rgba(15, 23, 42, 0.09);
+  --border-strong: rgba(15, 23, 42, 0.18);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --accent: #2563eb;
+  --accent-glow: rgba(37, 99, 235, 0.12);
+  --hook-color: #d97706;
+  --scrollbar-thumb: rgba(15, 23, 42, 0.2);
 }
 
 html,
@@ -23,6 +50,7 @@ body,
   margin: 0;
   background: var(--bg-canvas);
   color: var(--text-primary);
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 
 body {
@@ -59,7 +87,7 @@ body {
   flex-direction: column;
   align-items: center;
   padding: 12px 8px;
-  background: #0c0c0f;
+  background: var(--bg-rail);
   border-inline-end: 1px solid var(--border-hairline);
   z-index: 30;
 }
@@ -97,6 +125,9 @@ body {
   width: 100%;
   padding-top: 8px;
   border-top: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .dw-rail-btn {
@@ -123,13 +154,17 @@ body {
 
 .dw-rail-btn:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-hover);
 }
 
 .dw-rail-btn.is-active {
-  color: #fff;
+  color: var(--accent);
   background: var(--accent-glow);
   border-color: rgba(59, 130, 246, 0.32);
+}
+
+:root[data-theme='dark'] .dw-rail-btn.is-active {
+  color: #fff;
 }
 
 .dw-rail-btn:focus-visible {
@@ -153,7 +188,7 @@ body {
   align-items: center;
   gap: 12px;
   padding: 8px 24px;
-  background: rgba(9, 9, 11, 0.85);
+  background: var(--bg-topbar);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-hairline);
   position: sticky;
@@ -170,8 +205,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #93c5fd !important;
-  background: rgba(59, 130, 246, 0.1) !important;
+  color: var(--accent) !important;
+  background: var(--accent-glow) !important;
   border: 1px solid rgba(59, 130, 246, 0.25) !important;
   border-radius: 999px;
   padding: 2px 12px;
@@ -182,7 +217,7 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: var(--accent);
   animation: dw-pulse 1.5s infinite;
 }
 
@@ -345,7 +380,7 @@ textarea.dw-auto-textarea {
 }
 
 .dw-project-title-btn:hover {
-  color: #60a5fa;
+  color: var(--accent);
 }
 
 .dw-project-dir {
@@ -423,7 +458,7 @@ textarea.dw-auto-textarea {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-gutter: stable;
 }
 
@@ -456,7 +491,7 @@ textarea.dw-auto-textarea {
 
 .dw-cut-item.is-active {
   border-color: rgba(59, 130, 246, 0.55);
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--accent-glow);
 }
 
 .dw-cut-item.is-active::before {
@@ -508,7 +543,7 @@ textarea.dw-auto-textarea {
 .dw-stage {
   position: sticky;
   top: 64px;
-  background: #050507;
+  background: var(--bg-stage);
   border: 1px solid var(--border-hairline);
   border-radius: 14px;
   padding: 14px 16px;
@@ -530,7 +565,7 @@ textarea.dw-auto-textarea {
   background: radial-gradient(120% 80% at 50% 15%, rgba(59, 130, 246, 0.08), transparent 60%), #09090d;
   color: #cbd5e1;
   overflow: clip;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .dw-player-wide {
@@ -609,7 +644,7 @@ textarea.dw-auto-textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--bg-surface);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-hairline);
   border-radius: 10px;
   padding: 5px 10px;
@@ -642,7 +677,7 @@ textarea.dw-auto-textarea {
   min-width: 0;
   max-width: 100%;
   padding: 3px;
-  background: var(--bg-surface);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-hairline);
   border-radius: 8px;
   overflow: hidden;
@@ -693,7 +728,7 @@ textarea.dw-auto-textarea {
   max-width: 100%;
   padding: 8px 10px;
   border-radius: 8px;
-  background: var(--bg-surface);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-hairline);
   font-size: 12px;
   overflow: hidden;
@@ -726,7 +761,7 @@ textarea.dw-auto-textarea {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .dw-tl-pill {
@@ -737,7 +772,7 @@ textarea.dw-auto-textarea {
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid var(--border-hairline);
-  background: var(--bg-surface);
+  background: var(--bg-elevated);
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 11px;
@@ -751,13 +786,13 @@ textarea.dw-auto-textarea {
 .dw-tl-pill:hover {
   border-color: var(--border-strong);
   color: var(--text-primary);
-  background: var(--bg-elevated);
+  background: var(--bg-hover);
 }
 
 .dw-tl-pill.is-now {
   border-color: rgba(59, 130, 246, 0.55);
-  color: #fff;
-  background: rgba(59, 130, 246, 0.16);
+  color: var(--text-primary);
+  background: var(--accent-glow);
 }
 
 .dw-tl-dot {
@@ -812,7 +847,7 @@ textarea.dw-auto-textarea {
 .dw-hook-box {
   font-size: 15px;
   font-weight: 600;
-  color: #fbbf24;
+  color: var(--hook-color);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -834,7 +869,7 @@ textarea.dw-auto-textarea {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-gutter: stable;
 }
 
@@ -863,7 +898,7 @@ textarea.dw-auto-textarea {
 
 .dw-clip-row.is-now {
   border-color: rgba(59, 130, 246, 0.55);
-  background: rgba(59, 130, 246, 0.12);
+  background: var(--accent-glow);
 }
 
 .dw-clip-order {
@@ -871,8 +906,8 @@ textarea.dw-auto-textarea {
   height: 20px;
   margin-top: 1px;
   border-radius: 50%;
-  background: rgba(59, 130, 246, 0.18);
-  color: #60a5fa;
+  background: var(--accent-glow);
+  color: var(--accent);
   font-size: 11px;
   font-weight: 600;
   display: inline-flex;
@@ -929,13 +964,13 @@ textarea.dw-auto-textarea {
 
 .dw-tpl-btn:hover {
   border-color: rgba(59, 130, 246, 0.5);
-  background: rgba(59, 130, 246, 0.08);
+  background: var(--accent-glow);
 }
 
 .dw-tpl-title {
   font-size: 12px;
   font-weight: 600;
-  color: #93c5fd;
+  color: var(--accent);
 }
 
 .dw-tpl-desc {
@@ -957,7 +992,7 @@ textarea.dw-auto-textarea {
   max-height: 480px;
   overflow: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-gutter: stable;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
@@ -988,11 +1023,11 @@ textarea.dw-auto-textarea {
 }
 
 .dw-log-error .dw-log-msg {
-  color: #f87171;
+  color: #ef4444;
 }
 
 .dw-log-warn .dw-log-msg {
-  color: #fbbf24;
+  color: var(--hook-color);
 }
 
 /* ---------- 容器查询与响应式 ---------- */
@@ -1023,11 +1058,9 @@ textarea.dw-auto-textarea {
     --border-hairline: rgba(255, 255, 255, 0.24);
     --border-strong: rgba(255, 255, 255, 0.45);
   }
-  .dw-cut-list,
-  .dw-lines,
-  .dw-tl-legend,
-  .dw-log {
-    scrollbar-color: #ffffff #18181c;
+  :root[data-theme='light'] {
+    --border-hairline: rgba(15, 23, 42, 0.28);
+    --border-strong: rgba(15, 23, 42, 0.55);
   }
 }
 
