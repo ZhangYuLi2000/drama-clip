@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, PointerEvent, ReactElement } from 'react'
+import type { KeyboardEvent, PointerEvent, ReactElement, WheelEvent } from 'react'
 import { fmtSec } from './library'
 
 const MagnetIcon = (): ReactElement => (
@@ -44,18 +44,33 @@ interface Anchor {
   label: string
 }
 
-const PAD_LEFT = 16
-const PAD_RIGHT = 24
+interface RulerTick {
+  time: number
+  major: boolean
+  label?: string
+}
+
+const PAD_LEFT = 14
+const PAD_RIGHT = 20
 const SNAP_RADIUS_PX = 8
 
 function rgba(hex: string, alpha: number): string {
-  const n = parseInt(hex.slice(1), 16)
+  const clean = hex.startsWith('#') ? hex.slice(1) : hex
+  const n = parseInt(clean, 16)
+  if (Number.isNaN(n)) return `rgba(59, 130, 246, ${alpha})`
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
 }
 
+function formatRulerTime(sec: number): string {
+  const s = Math.max(0, Math.round(sec))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return m > 0 ? `${m}:${String(r).padStart(2, '0')}` : `${r}s`
+}
+
 /**
- * 磁吸结构时间轴：半透明角色色块 + 播放头帽 + 段边界磁吸（激光线/闪烁/tooltip）+ 缩放横向滚动。
- * 段数少（≤10），自绘轨道即可，pointer capture 实现拖拽 scrub。
+ * CapCut 风格磁吸结构时间轴（纯播放定位）：
+ * 顶部自适应时间刻度尺 + 悬停预览线 + 半透明角色色块 + 磁吸接缝激光线 + 缩放滚动。
  */
 export default function TimelineScrubber({
   segments,
@@ -73,6 +88,7 @@ export default function TimelineScrubber({
   const [zoom, setZoom] = useState(1)
   const [snapOn, setSnapOn] = useState(true)
   const [tip, setTip] = useState({ x: 0, text: '', snapped: false, visible: false })
+  const [hoverX, setHoverX] = useState<number | null>(null)
   const [laserX, setLaserX] = useState<number | null>(null)
   const [flashIdx, setFlashIdx] = useState(-1)
   const [headSnapped, setHeadSnapped] = useState(false)
@@ -106,10 +122,31 @@ export default function TimelineScrubber({
     return list
   }, [bounds, segments, total])
 
-  const baseW = Math.max(width - PAD_LEFT - PAD_RIGHT, 580)
+  const baseW = Math.max(width - PAD_LEFT - PAD_RIGHT, 540)
   const trackW = baseW * zoom
   const canvasW = trackW + PAD_LEFT + PAD_RIGHT
   const pxOf = (t: number): number => PAD_LEFT + (t / (total || 1)) * trackW
+
+  // 动态计算刻度尺密度（保证主刻度间距 >= 64px）
+  const ticks = useMemo<RulerTick[]>(() => {
+    if (total <= 0 || trackW <= 0) return []
+    const pxPerSec = trackW / total
+    const candidates = [1, 2, 5, 10, 15, 30, 60, 120]
+    const majorStep = candidates.find((s) => s * pxPerSec >= 68) ?? 120
+    const minorDiv = majorStep >= 10 ? 5 : majorStep >= 2 ? 2 : 1
+    const minorStep = majorStep / minorDiv
+    const result: RulerTick[] = []
+    for (let t = 0; t <= total + 0.001; t += minorStep) {
+      const rounded = Math.round(t * 100) / 100
+      const isMajor = Math.abs(rounded % majorStep) < 0.01 || Math.abs((rounded % majorStep) - majorStep) < 0.01
+      result.push({
+        time: Math.min(rounded, total),
+        major: isMajor,
+        label: isMajor ? formatRulerTime(rounded) : undefined
+      })
+    }
+    return result
+  }, [total, trackW])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -155,10 +192,10 @@ export default function TimelineScrubber({
   const showTip = (time: number, anchor: Anchor | null): void => {
     const scroll = scrollRef.current
     const wrapW = scroll?.clientWidth ?? 0
-    const x = Math.max(90, Math.min(wrapW - 110, pxOf(time) - (scroll?.scrollLeft ?? 0)))
+    const x = Math.max(88, Math.min(wrapW - 104, pxOf(time) - (scroll?.scrollLeft ?? 0)))
     const i = segIdxAt(time)
     const text = anchor
-      ? `已吸附 ${anchor.label} · ${fmtSec(time)}`
+      ? `吸附 ${anchor.label} · ${fmtSec(time)}`
       : `${fmtSec(time)} · #${i + 1} ${segments[i]?.label ?? ''}`
     setTip({ x, text, snapped: Boolean(anchor), visible: true })
   }
@@ -178,7 +215,7 @@ export default function TimelineScrubber({
     flashTimer.current = window.setTimeout(() => {
       clearSnap()
       setTip((t) => ({ ...t, visible: false }))
-    }, 900)
+    }, 850)
   }
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>): void => {
@@ -195,10 +232,17 @@ export default function TimelineScrubber({
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>): void => {
     const d = dragRef.current
-    if (!d.active) return
+    if (!d.active) {
+      // 悬停预览线与时间点提示
+      const { time, anchor } = calcSnap(e.clientX)
+      setHoverX(pxOf(time))
+      showTip(time, anchor)
+      return
+    }
     if (Math.abs(e.clientX - d.startX) > 4) d.moved = true
     if (!d.moved) return
     const { time, anchor } = calcSnap(e.clientX)
+    setHoverX(null)
     onChange(time)
     if (anchor) {
       setLaserX(pxOf(anchor.time))
@@ -234,8 +278,23 @@ export default function TimelineScrubber({
 
   const onPointerCancel = (): void => {
     dragRef.current.active = false
+    setHoverX(null)
     setTip((t) => ({ ...t, visible: false }))
     clearSnap()
+  }
+
+  const onPointerLeave = (): void => {
+    if (!dragRef.current.active) {
+      setHoverX(null)
+      setTip((t) => ({ ...t, visible: false }))
+    }
+  }
+
+  const onWheel = (e: WheelEvent<HTMLDivElement>): void => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      setZoom((z) => Math.max(1, Math.min(4, Math.round((z - e.deltaY * 0.005) * 10) / 10)))
+    }
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
@@ -278,25 +337,30 @@ export default function TimelineScrubber({
           <MagnetIcon />
           磁吸定位
         </button>
-        <span className="dw-tl2-hint">任意位置按住拖动 · 经过接缝自动磁吸 · 轻点色块直达段首</span>
+        <span className="dw-tl2-hint">悬停预览 · 拖拽定位 · 轻点色块直达段首</span>
         <span className="dw-spacer" />
-        <span className="dw-tl2-zoom-label">缩放</span>
+        <span className="dw-tl2-zoom-label dw-mono">{Math.round(zoom * 100)}%</span>
         <input
           type="range"
           className="dw-tl2-zoom"
           min={1}
-          max={3.5}
+          max={4}
           step={0.1}
           value={zoom}
           onChange={(e) => setZoom(Number(e.target.value))}
           aria-label="缩放时间轴"
         />
-        <button type="button" className="dw-tl2-tool" onClick={() => setZoom(1)}>
+        <button
+          type="button"
+          className={`dw-tl2-tool${zoom === 1 ? ' is-on' : ''}`}
+          onClick={() => setZoom(1)}
+          title="重置缩放以适配窗口"
+        >
           适配
         </button>
       </div>
 
-      <div className="dw-tl2-scroll" ref={scrollRef}>
+      <div className="dw-tl2-scroll" ref={scrollRef} onWheel={onWheel}>
         <div
           className="dw-tl2-canvas"
           ref={canvasRef}
@@ -305,7 +369,21 @@ export default function TimelineScrubber({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerCancel}
+          onPointerLeave={onPointerLeave}
         >
+          {/* 顶部时间刻度尺 */}
+          <div className="dw-tl2-ruler" aria-hidden="true">
+            {ticks.map((tk, i) => (
+              <div
+                key={i}
+                className={`dw-tl2-tick${tk.major ? ' is-major' : ''}`}
+                style={{ left: pxOf(tk.time) }}
+              >
+                {tk.label && <span className="dw-tl2-tick-lbl dw-mono">{tk.label}</span>}
+              </div>
+            ))}
+          </div>
+
           <div className="dw-tl2-track">
             {segments.map((s, i) => {
               const b = bounds[i]
@@ -318,8 +396,8 @@ export default function TimelineScrubber({
                   style={{
                     left: pxOf(b.start),
                     width: w,
-                    background: rgba(s.color, 0.2),
-                    borderColor: rgba(s.color, 0.55)
+                    background: rgba(s.color, i === activeIdx ? 0.28 : 0.16),
+                    borderColor: rgba(s.color, i === activeIdx ? 0.85 : 0.42)
                   }}
                   title={s.title}
                 >
@@ -330,11 +408,15 @@ export default function TimelineScrubber({
                     </span>
                     {w > 74 && s.ep && <span className="dw-tl2-ep">{s.ep}</span>}
                   </div>
-                  <div className="dw-tl2-sub">{w > 110 && s.sub ? s.sub : `${s.seconds.toFixed(1)}s`}</div>
+                  <div className="dw-tl2-sub">{w > 108 && s.sub ? s.sub : `${s.seconds.toFixed(1)}s`}</div>
                 </div>
               )
             })}
           </div>
+
+          {hoverX !== null && !dragRef.current.active && (
+            <div className="dw-tl2-ghost" style={{ left: hoverX }} aria-hidden="true" />
+          )}
           {laserX !== null && <div className="dw-tl2-laser" style={{ left: laserX }} />}
           <div
             className={`dw-tl2-playhead${headSnapped ? ' is-snapped' : ''}`}

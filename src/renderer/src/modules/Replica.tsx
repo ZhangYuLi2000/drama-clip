@@ -1,20 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import {
-  CaretRightOutlined,
   DeleteOutlined,
   FolderOpenOutlined,
   ImportOutlined,
-  MutedOutlined,
-  PauseOutlined,
   PlusOutlined,
   ReloadOutlined,
-  SoundOutlined,
   StopOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons'
 import {
-  Alert,
   Button,
   Collapse,
   Empty,
@@ -32,10 +27,11 @@ import {
   Tag
 } from 'antd'
 import type { CreateReplicaParams, Drama, ReplicaEdlRow, ReplicaTask } from '../../../shared/types'
-import { fmtSec, mediaUrl, useLibrary } from '../library'
+import { fmtSec, useLibrary } from '../library'
 import { toast, useStore } from '../store'
 import { CRF_TIP, ParamTip, RADIUS_TIP } from '../paramTips'
-import TimelineScrubber from '../TimelineScrubber'
+import ReviewPlayer from '../ReviewPlayer'
+import type { ReviewSegment, SeekRequest } from '../ReviewPlayer'
 
 const STATUS_LABEL: Record<ReplicaTask['status'], string> = {
   queue: '排队中',
@@ -280,12 +276,8 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
   const stopTasks = useLibrary((s) => s.stopTasks)
   const selectReplica = useStore((s) => s.selectReplica)
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const [playing, setPlaying] = useState(false)
-  const [t, setT] = useState(0)
-  const [dur, setDur] = useState(0)
-  const [muted, setMuted] = useState(false)
-  const [videoErr, setVideoErr] = useState(false)
+  const seekSeqRef = useRef(0)
+  const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null)
   const [view, setView] = useState<'output' | 'clip'>('output')
   const [edl, setEdl] = useState<ReplicaEdlRow[]>([])
   const [recutAudio, setRecutAudio] = useState(task.audio)
@@ -299,10 +291,7 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
   const ready = task.status === 'ready' && Boolean(task.output)
 
   useEffect(() => {
-    setPlaying(false)
-    setT(0)
-    setDur(0)
-    setVideoErr(false)
+    setSeekRequest(null)
     setView('output')
     setRecutAudio(task.audio)
     setRecutCrf(task.crf)
@@ -322,43 +311,38 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
   }, [d.id, task.id, task.edlPath, ready, getReplicaEdl])
 
   const src = view === 'output' ? task.output : task.clipFile
-  const playable = !videoErr && Boolean(src) && (view === 'clip' || ready)
+  const playable = Boolean(src) && (view === 'clip' || ready)
 
-  const togglePlay = (): void => {
-    const v = videoRef.current
-    if (!v) return
-    if (playing) v.pause()
-    else void v.play().catch(() => setVideoErr(true))
-  }
-
-  const totalSec = edl.reduce((s, x) => s + x.seconds, 0)
-  const edlSegments = useMemo(
-    () =>
-      edl.map((s) => ({
+  const { totalSec, edlOffsets, edlSegments } = useMemo(() => {
+    let acc = 0
+    const offsets: number[] = []
+    const segs: ReviewSegment[] = edl.map((s) => {
+      offsets.push(acc)
+      acc += s.seconds
+      return {
         key: s.segmentId,
         label: KIND_LABEL[s.kind] ?? '片段',
         color: KIND_COLOR[s.kind] ?? '#52525b',
         seconds: s.seconds,
+        ep: s.episode || undefined,
+        sourceRange: s.srcInTc && s.srcOutTc ? `${s.srcInTc} → ${s.srcOutTc}` : undefined,
         title: `段${s.segmentId} · ${s.episode || '无出处'} · 原片 ${s.srcInTc || '—'} → ${s.srcOutTc || '—'} · ${fmtSec(s.seconds)}`
-      })),
-    [edl]
-  )
+      }
+    })
+    return { totalSec: acc, edlOffsets: offsets, edlSegments: segs }
+  }, [edl])
 
   const hasEdlTimeline = view === 'output' && edl.length > 0
-  // 原爆款切片 / EDL 尚未加载时也保留一个可拖拽的单段轴，避免切回原片后失去定位能力。
-  const timelineTotal = hasEdlTimeline ? totalSec : dur || task.stats?.totalSeconds || 1
-  const timelineSegments = useMemo(
-    () =>
-      hasEdlTimeline
-        ? edlSegments
-        : [{
-            key: `single-${view}`,
-            label: view === 'clip' ? '原爆款切片' : '复刻成片',
-            color: '#3b82f6',
-            seconds: timelineTotal
-          }],
-    [hasEdlTimeline, edlSegments, view, timelineTotal]
-  )
+  const timelineTotal = hasEdlTimeline ? totalSec : task.stats?.totalSeconds || 1
+  const reviewSegments = useMemo<ReviewSegment[]>(() => {
+    if (hasEdlTimeline) return edlSegments
+    return [{
+      key: `single-${view}`,
+      label: view === 'clip' ? '原爆款切片' : '复刻成片',
+      color: '#3b82f6',
+      seconds: timelineTotal
+    }]
+  }, [hasEdlTimeline, edlSegments, view, timelineTotal])
 
   const doRecut = (): void => {
     setBusy(true)
@@ -381,8 +365,19 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
 
   return (
     <>
-      <section className="dw-stage" aria-label="复刻监视器">
-        <div className="dw-panel-head" style={{ marginBottom: 0 }}>
+      <ReviewPlayer
+        src={src}
+        playable={playable}
+        ratio="9:16"
+        resetKey={`${task.id}-${src ?? ''}-${view}`}
+        segments={reviewSegments}
+        duration={timelineTotal}
+        seekRequest={seekRequest}
+        enableSubtitlePreview={false}
+        ariaLabel="复刻监视器"
+        timelineTitle={hasEdlTimeline ? '复刻结构时间轴' : view === 'clip' ? '原切片时间轴' : '复刻成片时间轴'}
+        timelineHint={hasEdlTimeline ? `共 ${edl.length} 段 · 蓝=连续 / 紫=静帧 / 灰=无出处` : undefined}
+        headerLeft={
           <Space size={8}>
             <span className="dw-panel-title">{task.clipTitle}</span>
             <Tag color={ready ? 'success' : running ? 'processing' : task.status === 'fail' ? 'error' : 'default'} style={{ marginInlineEnd: 0 }}>
@@ -390,135 +385,50 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
               {running ? ` ${task.pct}%` : ''}
             </Tag>
           </Space>
+        }
+        headerRight={
           <Segmented
             size="small"
             value={view}
-            onChange={(v) => {
-              setView(v as 'output' | 'clip')
-              setT(0)
-              setPlaying(false)
-            }}
+            onChange={(v) => setView(v as 'output' | 'clip')}
             options={[
               { value: 'output', label: '复刻成片', disabled: !ready },
               { value: 'clip', label: '原爆款切片' }
             ]}
           />
-        </div>
-
-        <div className="dw-player">
-          {playable ? (
+        }
+        emptyContent={
+          running ? (
             <>
-              <video
-                key={`${src}-${view}`}
-                ref={videoRef}
-                src={mediaUrl(src!)}
-                preload="metadata"
-                playsInline
-                muted={muted}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  background: '#000',
-                  cursor: 'pointer'
-                }}
-                onClick={togglePlay}
-                onLoadedMetadata={(e) => setDur(e.currentTarget.duration)}
-                onTimeUpdate={(e) => setT(e.currentTarget.currentTime)}
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                onEnded={() => setPlaying(false)}
-                onError={() => setVideoErr(true)}
-              />
-              <button type="button" className="dw-play-overlay" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
-                {playing ? <PauseOutlined /> : <CaretRightOutlined />}
-              </button>
+              <Spin />
+              <span className="dw-sub" style={{ color: '#e4e4e7' }}>
+                {stageText} {task.pct}%…
+              </span>
+              <Progress percent={task.pct} size="small" style={{ width: '78%' }} showInfo={false} />
+              {task.stageNote && <span className="dw-sub dw-mono">{task.stageNote}</span>}
+              <Button
+                size="small"
+                danger
+                icon={<StopOutlined />}
+                onClick={() =>
+                  stopTasks(d.id)
+                    .then(() => toast('已终止复刻任务', 'info'))
+                    .catch(() => toast('终止失败', 'info'))
+                }
+              >
+                终止任务
+              </Button>
             </>
           ) : (
-            <div className="dw-player-empty">
-              {running ? (
-                <>
-                  <Spin />
-                  <span className="dw-sub" style={{ color: '#e4e4e7' }}>
-                    {stageText} {task.pct}%…
-                  </span>
-                  <Progress percent={task.pct} size="small" style={{ width: '78%' }} showInfo={false} />
-                  {task.stageNote && <span className="dw-sub dw-mono">{task.stageNote}</span>}
-                  <Button
-                    size="small"
-                    danger
-                    icon={<StopOutlined />}
-                    onClick={() =>
-                      stopTasks(d.id)
-                        .then(() => toast('已终止复刻任务', 'info'))
-                        .catch(() => toast('终止失败', 'info'))
-                    }
-                  >
-                    终止任务
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <span className="dw-sub">{task.error || '成片尚未生成'}</span>
-                  <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => retryReplica(d.id, task.id)}>
-                    重试复刻
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {playable && (
-          <div className="dw-transport" role="group" aria-label="播放控制">
-            <Button
-              size="small"
-              type="text"
-              icon={playing ? <PauseOutlined /> : <CaretRightOutlined />}
-              onClick={togglePlay}
-              aria-label={playing ? '暂停' : '播放'}
-            />
-            <span className="dw-timecode">
-              {fmtSec(t)} / {fmtSec(dur || task.stats?.totalSeconds || 0)}
-            </span>
-            <span className="dw-spacer" />
-            <span className="dw-sub">拖动下方时间轴定位</span>
-            <Button
-              size="small"
-              type="text"
-              icon={muted ? <MutedOutlined /> : <SoundOutlined />}
-              onClick={() => setMuted(!muted)}
-              aria-label={muted ? '取消静音' : '静音'}
-              aria-pressed={muted}
-            />
-          </div>
-        )}
-
-        {playable && (
-          <div>
-            <div className="dw-sec-title" style={{ marginBottom: 6 }}>
-              {hasEdlTimeline ? '复刻结构时间轴' : view === 'clip' ? '原切片时间轴' : '复刻成片时间轴'}
-              <span className="dw-tl-hint">
-                {hasEdlTimeline
-                  ? `共 ${edl.length} 段 · 蓝=连续 / 紫=静帧 / 灰=无出处 · 拖动或点击定位`
-                  : '拖动或点击定位'}
-              </span>
-            </div>
-            <TimelineScrubber
-              ariaLabel={hasEdlTimeline ? '复刻结构时间轴，拖动定位播放进度' : '视频时间轴，拖动定位播放进度'}
-              duration={timelineTotal}
-              value={Math.min(t, timelineTotal)}
-              segments={timelineSegments}
-              onChange={(v: number) => {
-                if (videoRef.current) videoRef.current.currentTime = v
-                setT(v)
-              }}
-            />
-          </div>
-        )}
-      </section>
+            <>
+              <span className="dw-sub">{task.error || '成片尚未生成'}</span>
+              <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => retryReplica(d.id, task.id)}>
+                重试复刻
+              </Button>
+            </>
+          )
+        }
+      />
 
       <aside className="dw-inspector" aria-label="复刻详情与交付">
         {task.stats && (
@@ -620,6 +530,15 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
             pagination={false}
             scroll={{ y: 300 }}
             dataSource={edl}
+            onRow={(_, index) => ({
+              style: { cursor: hasEdlTimeline ? 'pointer' : undefined },
+              onClick: () => {
+                if (hasEdlTimeline && typeof index === 'number' && edlOffsets[index] !== undefined) {
+                  seekSeqRef.current += 1
+                  setSeekRequest({ time: edlOffsets[index], idx: index, seq: seekSeqRef.current })
+                }
+              }
+            })}
             columns={[
               { title: '#', dataIndex: 'segmentId', width: 36 },
               { title: '集', dataIndex: 'episode', width: 50, render: (v: string) => v || '—' },

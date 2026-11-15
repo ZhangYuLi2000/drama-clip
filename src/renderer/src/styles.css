@@ -643,6 +643,24 @@ textarea.dw-auto-textarea {
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
+.dw-stage.is-fullscreen {
+  max-height: 100vh;
+  height: 100vh;
+  border-radius: 0;
+  border: none;
+  padding: 18px 28px;
+  justify-content: space-between;
+  background: #070709;
+}
+
+.dw-stage.is-fullscreen .dw-player {
+  max-width: min(420px, 54vh);
+}
+
+.dw-stage.is-fullscreen .dw-player-wide {
+  max-width: min(1120px, 100%);
+}
+
 .dw-player {
   position: relative;
   width: 100%;
@@ -790,11 +808,39 @@ textarea.dw-auto-textarea {
   color: var(--text-secondary);
   font-size: 11px;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .dw-speed-chip:hover {
   color: var(--text-primary);
+}
+
+.dw-speed-chip.is-active {
+  color: var(--accent);
+  border-color: rgba(59, 130, 246, 0.45);
+  background: var(--accent-glow);
+}
+
+.dw-vol-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dw-vol-slider {
+  width: 0;
+  opacity: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  transition: width 0.18s ease, opacity 0.18s ease, margin 0.18s ease;
+}
+
+.dw-vol-wrap:hover .dw-vol-slider,
+.dw-vol-wrap:focus-within .dw-vol-slider {
+  width: 56px;
+  opacity: 1;
+  margin-right: 4px;
 }
 
 .dw-ctrl-on {
@@ -863,6 +909,32 @@ textarea.dw-auto-textarea {
   color: #fff;
   z-index: 4;
   pointer-events: none;
+}
+
+.dw-player-fs-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 8;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.16s ease, background-color 0.15s ease;
+}
+
+.dw-player:hover .dw-player-fs-btn,
+.dw-player-fs-btn:focus-visible {
+  opacity: 1;
 }
 
 .dw-subtitle-wrap {
@@ -1059,7 +1131,7 @@ textarea.dw-auto-textarea {
 
 .dw-tl2-canvas {
   position: relative;
-  height: 64px;
+  height: 76px;
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -1069,6 +1141,49 @@ textarea.dw-auto-textarea {
   cursor: grabbing;
 }
 
+.dw-tl2-ruler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 18px;
+  border-bottom: 1px solid var(--border-hairline);
+  pointer-events: none;
+}
+
+.dw-tl2-tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 4px;
+  background: var(--border-strong);
+}
+
+.dw-tl2-tick.is-major {
+  height: 8px;
+  background: var(--text-muted);
+}
+
+.dw-tl2-tick-lbl {
+  position: absolute;
+  top: -10px;
+  left: 3px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dw-tl2-ghost {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(148, 163, 184, 0.55);
+  z-index: 12;
+  pointer-events: none;
+}
+
 .dw-tl2-track {
   position: absolute;
   inset: 0;
@@ -1076,9 +1191,9 @@ textarea.dw-auto-textarea {
 
 .dw-tl2-block {
   position: absolute;
-  top: 12px;
+  top: 23px;
   bottom: 6px;
-  border-radius: 7px;
+  border-radius: 6px;
   border: 1px solid transparent;
   padding: 4px 8px;
   display: flex;

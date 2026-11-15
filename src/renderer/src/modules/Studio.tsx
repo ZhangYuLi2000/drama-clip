@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import {
-  BorderOutlined,
-  CaretRightOutlined,
   CopyOutlined,
   DeleteOutlined,
   DownloadOutlined,
@@ -13,17 +11,11 @@ import {
   ImportOutlined,
   InboxOutlined,
   LeftOutlined,
-  MutedOutlined,
-  PauseOutlined,
   PlusOutlined,
   ProfileOutlined,
   ReloadOutlined,
-  RetweetOutlined,
   ScanOutlined,
   ScissorOutlined,
-  SoundOutlined,
-  StepBackwardOutlined,
-  StepForwardOutlined,
   StopOutlined,
   ThunderboltOutlined,
   VideoCameraAddOutlined
@@ -49,9 +41,10 @@ import {
 } from 'antd'
 import type { CutMode, CutStyle, Drama, GlobalScript, PromoCut } from '../../../shared/types'
 import { CUT_STYLES } from '../../../shared/types'
-import { findDrama, fmtSec, mediaUrl, useLibrary } from '../library'
+import { findDrama, fmtSec, useLibrary } from '../library'
 import { toast, useStore } from '../store'
-import TimelineScrubber from '../TimelineScrubber'
+import ReviewPlayer from '../ReviewPlayer'
+import type { ReviewSegment, SeekRequest } from '../ReviewPlayer'
 import ReplicaPanel, { NewReplicaModal } from './Replica'
 
 const STYLE_COLOR: Record<CutStyle, string> = {
@@ -510,17 +503,10 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   const exportCutPackage = useLibrary((s) => s.exportCutPackage)
   const stopTasks = useLibrary((s) => s.stopTasks)
 
-  const videoRef = useRef<HTMLVideoElement>(null)
   const linesRef = useRef<HTMLDivElement>(null)
-  const [playing, setPlaying] = useState(false)
-  const [t, setT] = useState(0)
-  const [dur, setDur] = useState(0)
-  const [muted, setMuted] = useState(false)
-  const [speed, setSpeed] = useState(1)
-  const [loopSeg, setLoopSeg] = useState(false)
-  const [safeZone, setSafeZone] = useState(false)
-  const [videoErr, setVideoErr] = useState(false)
-  const [inspectedIdx, setInspectedIdx] = useState(0)
+  const seekSeqRef = useRef(0)
+  const [currentIdx, setCurrentIdx] = useState(0)
+  const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null)
 
   const [instruction, setInstruction] = useState('')
   const [nextStyle, setNextStyle] = useState<CutStyle>(cut.style)
@@ -529,24 +515,14 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   const [exportBusy, setExportBusy] = useState(false)
 
   useEffect(() => {
-    setPlaying(false)
-    setT(0)
-    setDur(0)
-    setVideoErr(false)
-    setInspectedIdx(0)
+    setCurrentIdx(0)
+    setSeekRequest(null)
     setNextStyle(cut.style)
     setNextTarget(cut.targetSec)
     setInstruction('')
   }, [cut.id, cut.revision, cut.output])
 
-  const playable = cut.status === 'ready' && Boolean(cut.output) && !videoErr
-
-  const togglePlay = (): void => {
-    const v = videoRef.current
-    if (!v) return
-    if (playing) v.pause()
-    else void v.play().catch(() => setVideoErr(true))
-  }
+  const playable = cut.status === 'ready' && Boolean(cut.output)
 
   const copyText = (txt: string, label: string): void => {
     void navigator.clipboard
@@ -577,43 +553,37 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
       .finally(() => setExportBusy(false))
   }
 
-  // 计算每段在合成时间轴上的起止偏移与当前命中段
-  const totalSegDur = cut.clips.reduce((sum, c) => sum + Math.max(0.5, c.out - c.in), 0) || 1
-  let accOffset = 0
-  const segments = cut.clips.map((c, idx) => {
-    const segDur = Math.max(0.5, c.out - c.in)
-    const startAt = accOffset
-    accOffset += segDur
-    const active = playable && t >= startAt && (t < startAt + segDur - 0.02 || (idx === cut.clips.length - 1 && t >= startAt))
-    return { c, idx, segDur, startAt, active }
-  })
-  const playingSeg = segments.find((s) => s.active)
-  const currentSeg = playingSeg ?? segments[Math.min(inspectedIdx, Math.max(0, segments.length - 1))] ?? segments[0]
+  const { segments, totalSegDur, reviewSegments } = useMemo(() => {
+    let accOffset = 0
+    const segs = cut.clips.map((c, idx) => {
+      const segDur = Math.max(0.5, c.out - c.in)
+      const startAt = accOffset
+      accOffset += segDur
+      return { c, idx, segDur, startAt }
+    })
+    const rSegs: ReviewSegment[] = cut.clips.map((c, idx) => ({
+      key: `${c.epId}-${c.in}-${idx}`,
+      label: c.role,
+      color: ROLE_HEX[c.role] ?? '#3b82f6',
+      seconds: Math.max(0.5, c.out - c.in),
+      ep: `第 ${c.epN} 集`,
+      sub: c.quote || c.why,
+      quote: c.quote,
+      why: c.why,
+      sourceRange: `${fmtSec(c.in)}–${fmtSec(c.out)}`,
+      title: `#${idx + 1} 第 ${c.epN} 集 ${fmtSec(c.in)}–${fmtSec(c.out)} · [${c.role}] ${c.why}`
+    }))
+    return { segments: segs, totalSegDur: accOffset || 1, reviewSegments: rSegs }
+  }, [cut.clips])
 
-  // 时间轴元数据与播放状态分离：播放 / 拖动只更新游标，不重建 TimelineRow。
-  const timelineSegments = useMemo(
-    () =>
-      cut.clips.map((c, idx) => ({
-        key: `${c.epId}-${c.in}-${idx}`,
-        label: c.role,
-        color: ROLE_HEX[c.role] ?? '#3b82f6',
-        seconds: Math.max(0.5, c.out - c.in),
-        ep: `第 ${c.epN} 集`,
-        sub: c.quote || c.why,
-        title: `#${idx + 1} 第 ${c.epN} 集 ${fmtSec(c.in)}–${fmtSec(c.out)} · [${c.role}] ${c.why}`
-      })),
-    [cut.clips]
-  )
+  const currentSeg = segments[Math.min(currentIdx, Math.max(0, segments.length - 1))] ?? segments[0]
 
   const seekToSeg = (idx: number, startAt: number): void => {
-    setInspectedIdx(idx)
-    const v = videoRef.current
-    if (!v || !playable) return
-    v.currentTime = startAt
-    setT(startAt)
+    setCurrentIdx(idx)
+    seekSeqRef.current += 1
+    setSeekRequest({ time: startAt, idx, seq: seekSeqRef.current })
   }
 
-  const currentIdx = currentSeg?.idx ?? 0
   useEffect(() => {
     const box = linesRef.current
     const row = box?.children[currentIdx] as HTMLElement | undefined
@@ -624,58 +594,23 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
     else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 4
   }, [currentIdx, cut.id])
 
-  const cycleSpeed = (): void => setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length])
-
-  const jumpSeg = (delta: number): void => {
-    if (segments.length === 0) return
-    const idx = Math.min(segments.length - 1, Math.max(0, currentIdx + delta))
-    seekToSeg(idx, segments[idx].startAt)
-  }
-
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.playbackRate = speed
-  }, [speed, cut.output, cut.revision])
-
-  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
-  keyHandlerRef.current = (e) => {
-    const target = e.target as HTMLElement
-    if (target.closest('input, textarea, select, [contenteditable="true"], .ant-modal, .ant-drawer')) return
-    if (e.code === 'Space') {
-      if (target.closest('button')) return
-      e.preventDefault()
-      togglePlay()
-    } else if (e.key === '[') {
-      jumpSeg(-1)
-    } else if (e.key === ']') {
-      jumpSeg(1)
-    } else if (e.key === 'l' || e.key === 'L') {
-      setLoopSeg((v) => !v)
-    } else if (e.key === 's' || e.key === 'S') {
-      if (cut.ratio === '9:16') setSafeZone((v) => !v)
-    }
-  }
-  useEffect(() => {
-    const h = (e: KeyboardEvent): void => keyHandlerRef.current(e)
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [])
-
-  const seekTimeline = (value: number): void => {
-    const nextIdx = segments.findIndex(
-      (s) => value >= s.startAt && (value < s.startAt + s.segDur || s.idx === segments.length - 1)
-    )
-    if (nextIdx >= 0) setInspectedIdx(nextIdx)
-    const v = videoRef.current
-    if (v && playable) v.currentTime = value
-    setT(value)
-  }
-
   return (
     <>
-      {/* 中央监视器 */}
-      <section className="dw-stage" aria-label="成片监视器">
-        <div className="dw-panel-head" style={{ marginBottom: 0 }}>
-          <Space size={6} wrap style={{ minWidth: 0, flex: 1 }}>
+      {/* 中央审查监视器 */}
+      <ReviewPlayer
+        src={cut.output}
+        playable={playable}
+        ratio={cut.ratio}
+        resetKey={`${cut.id}-${cut.output ?? ''}-${cut.revision}`}
+        segments={reviewSegments}
+        duration={totalSegDur}
+        seekRequest={seekRequest}
+        onActiveIdxChange={setCurrentIdx}
+        timelineTitle="成片结构时间轴"
+        timelineHint={`共 ${cut.clips.length} 段`}
+        ariaLabel="成片监视器"
+        headerLeft={
+          <Space size={6} wrap style={{ minWidth: 0 }}>
             <span className="dw-panel-title" title={cut.title}>
               {cut.title}
             </span>
@@ -696,270 +631,43 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               v{cut.revision}
             </Tag>
           </Space>
-          <span className="dw-sub dw-mono" style={{ flex: 'none' }}>
+        }
+        headerRight={
+          <span className="dw-sub dw-mono">
             {cut.ratio} · {fmtSec(cut.actualSec)}
           </span>
-        </div>
-
-        {segments.length > 0 && (
-          <div className="dw-stage-hud">
-            <span className="dw-now-pill">
-              <span
-                className="dw-tl-dot"
-                style={{ background: ROLE_HEX[currentSeg?.c.role ?? ''] ?? '#3b82f6' }}
-              />
-              <span className="dw-now-text">
-                正在预览：#{(currentSeg?.idx ?? 0) + 1} {currentSeg?.c.role} · 第 {currentSeg?.c.epN} 集
-              </span>
-            </span>
-            <span className="dw-kbd-tips">
-              <span className="dw-kbd-chip">Space 播放</span>
-              <span className="dw-kbd-chip">[ / ] 切换段落</span>
-              <span className="dw-kbd-chip">L 单段循环</span>
-              <span className="dw-kbd-chip">S 安全区</span>
-            </span>
-          </div>
-        )}
-
-        <div
-          className={cut.ratio === '9:16' ? 'dw-player' : 'dw-player dw-player-wide'}
-          style={
-            { '--player-glow': `${ROLE_HEX[currentSeg?.c.role ?? ''] ?? '#3b82f6'}26` } as CSSProperties
-          }
-        >
-          {playable ? (
+        }
+        emptyContent={
+          cut.status === 'rendering' ? (
             <>
-              <video
-                key={`${cut.output}-${cut.revision}`}
-                ref={videoRef}
-                src={mediaUrl(cut.output!)}
-                width={cut.ratio === '9:16' ? 296 : 520}
-                height={cut.ratio === '9:16' ? 526 : 292}
-                preload="metadata"
-                playsInline
-                muted={muted}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  background: '#000',
-                  cursor: 'pointer'
-                }}
-                onClick={togglePlay}
-                onLoadedMetadata={(e) => {
-                  setDur(e.currentTarget.duration)
-                  e.currentTarget.playbackRate = speed
-                }}
-                onTimeUpdate={(e) => {
-                  const v = e.currentTarget
-                  let ct = v.currentTime
-                  if (loopSeg && segments.length > 0) {
-                    const seg =
-                      segments.find((s) => ct >= s.startAt && ct < s.startAt + s.segDur) ??
-                      segments[segments.length - 1]
-                    if (ct >= seg.startAt + seg.segDur - 0.05) {
-                      v.currentTime = seg.startAt
-                      ct = seg.startAt
-                    }
-                  }
-                  setT(ct)
-                }}
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                onEnded={() => {
-                  if (loopSeg && segments.length > 0 && videoRef.current) {
-                    videoRef.current.currentTime = segments[segments.length - 1].startAt
-                    void videoRef.current.play().catch(() => setVideoErr(true))
-                  } else {
-                    setPlaying(false)
-                  }
-                }}
-                onError={() => setVideoErr(true)}
-              />
-              <button
-                type="button"
-                className={`dw-play-overlay${playing ? ' is-playing' : ''}`}
-                onClick={togglePlay}
-                aria-label={playing ? '暂停' : '播放'}
+              <Spin />
+              <span className="dw-sub" style={{ color: '#e4e4e7' }}>
+                正在渲染纯净成片 {cut.pct ?? 0}%…
+              </span>
+              <Progress percent={cut.pct ?? 0} size="small" style={{ width: '78%' }} showInfo={false} />
+              <Button
+                size="small"
+                danger
+                icon={<StopOutlined />}
+                onClick={() =>
+                  stopTasks(d.id)
+                    .then(() => toast('已终止当前渲染任务', 'info'))
+                    .catch(() => toast('终止失败', 'info'))
+                }
               >
-                {playing ? <PauseOutlined /> : <CaretRightOutlined />}
-              </button>
-              <div className="dw-beat-badge">
-                <span
-                  className="dw-tl-dot"
-                  style={{ background: ROLE_HEX[currentSeg?.c.role ?? ''] ?? '#3b82f6' }}
-                />
-                #{(currentSeg?.idx ?? 0) + 1} {currentSeg?.c.role}
-              </div>
-              {currentSeg?.c.quote && (
-                <div className="dw-subtitle-wrap">
-                  <span className="dw-subtitle">「{currentSeg.c.quote}」</span>
-                </div>
-              )}
-              <div className={`dw-safezone${safeZone && cut.ratio === '9:16' ? ' is-visible' : ''}`}>
-                <div className="dw-sz-top">顶部频道导航遮挡区</div>
-                <div className="dw-sz-right">
-                  <span className="dw-sz-dot" />
-                  <span className="dw-sz-dot" />
-                  <span className="dw-sz-dot" />
-                  <span className="dw-sz-dot" />
-                </div>
-                <div className="dw-sz-bottom">底部剧名与引导挂载安全避让区</div>
-              </div>
+                终止渲染
+              </Button>
             </>
           ) : (
-            <div className="dw-player-empty">
-              {cut.status === 'rendering' ? (
-                <>
-                  <Spin />
-                  <span className="dw-sub" style={{ color: '#e4e4e7' }}>
-                    正在渲染纯净成片 {cut.pct ?? 0}%…
-                  </span>
-                  <Progress percent={cut.pct ?? 0} size="small" style={{ width: '78%' }} showInfo={false} />
-                  <Button
-                    size="small"
-                    danger
-                    icon={<StopOutlined />}
-                    onClick={() =>
-                      stopTasks(d.id)
-                        .then(() => toast('已终止当前渲染任务', 'info'))
-                        .catch(() => toast('终止失败', 'info'))
-                    }
-                  >
-                    终止渲染
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <span className="dw-sub">{cut.error || '成片尚未渲染或文件丢失'}</span>
-                  <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => renderCut(d.id, cut.id)}>
-                    重新渲染
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="dw-transport" role="group" aria-label="播放控制">
-          <span className="dw-timecode">
-            <span className="dw-time-cur">{fmtSec(t)}</span>
-            <span className="dw-time-tot"> / {fmtSec(dur || cut.actualSec)}</span>
-          </span>
-          <div className="dw-ctrl-group">
-            <Button
-              size="small"
-              type="text"
-              icon={<StepBackwardOutlined />}
-              disabled={!playable || segments.length === 0}
-              onClick={() => jumpSeg(-1)}
-              aria-label="上一段"
-              title="上一段 ([)"
-            />
-            <button
-              type="button"
-              className="dw-btn-play-main"
-              onClick={togglePlay}
-              disabled={!playable}
-              aria-label={playing ? '暂停' : '播放'}
-              title="播放 / 暂停 (Space)"
-            >
-              {playing ? <PauseOutlined /> : <CaretRightOutlined />}
-            </button>
-            <Button
-              size="small"
-              type="text"
-              icon={<StepForwardOutlined />}
-              disabled={!playable || segments.length === 0}
-              onClick={() => jumpSeg(1)}
-              aria-label="下一段"
-              title="下一段 (])"
-            />
-          </div>
-          <div className="dw-ctrl-group">
-            <button type="button" className="dw-speed-chip dw-mono" onClick={cycleSpeed} title="播放倍速">
-              {speed}x
-            </button>
-            <Button
-              size="small"
-              type="text"
-              className={loopSeg ? 'dw-ctrl-on' : undefined}
-              icon={<RetweetOutlined />}
-              onClick={() => setLoopSeg((v) => !v)}
-              aria-label="循环当前段"
-              aria-pressed={loopSeg}
-              title="循环当前段 (L)"
-            />
-            <Button
-              size="small"
-              type="text"
-              className={safeZone ? 'dw-ctrl-on' : undefined}
-              icon={<BorderOutlined />}
-              disabled={cut.ratio !== '9:16'}
-              onClick={() => setSafeZone((v) => !v)}
-              aria-label="安全区参考"
-              aria-pressed={safeZone}
-              title="抖音/TikTok 安全区参考 (S)"
-            />
-            <Button
-              size="small"
-              type="text"
-              icon={muted ? <MutedOutlined /> : <SoundOutlined />}
-              onClick={() => setMuted(!muted)}
-              aria-label={muted ? '取消静音' : '静音'}
-              aria-pressed={muted}
-            />
-          </div>
-        </div>
-
-        <div className="dw-tl-box">
-          <div className="dw-tl-head">
-            <span className="dw-sec-title" style={{ marginBottom: 0 }}>
-              成片结构时间轴
-              <span className="dw-tl-hint">共 {cut.clips.length} 段</span>
-            </span>
-            <span className="dw-sub dw-mono">
-              当前 #{(currentSeg?.idx ?? 0) + 1}/{cut.clips.length}
-            </span>
-          </div>
-
-          <TimelineScrubber
-            ariaLabel="成片结构时间轴，拖动定位播放进度"
-            duration={totalSegDur}
-            value={Math.min(t, totalSegDur)}
-            segments={timelineSegments}
-            onChange={seekTimeline}
-          />
-
-          {currentSeg && (
-            <div className="dw-tl-active-card">
-              <div className="dw-tl-active-top">
-                <Tag
-                  style={{
-                    marginInlineEnd: 0,
-                    borderColor: 'transparent',
-                    background: ROLE_HEX[currentSeg.c.role] ?? '#3b82f6',
-                    color: roleText(currentSeg.c.role)
-                  }}
-                >
-                  #{currentSeg.idx + 1} {currentSeg.c.role}
-                </Tag>
-                <span style={{ fontWeight: 600 }}>第 {currentSeg.c.epN} 集</span>
-                <span className="dw-sub dw-mono">
-                  {fmtSec(currentSeg.c.in)}–{fmtSec(currentSeg.c.out)}（{fmtSec(currentSeg.segDur)}）
-                </span>
-              </div>
-              <div className="dw-tl-active-why">
-                {currentSeg.c.why || '叙事关键推进片段'}
-                {currentSeg.c.quote ? ` · 「${currentSeg.c.quote}」` : ''}
-              </div>
-            </div>
-          )}
-
-        </div>
-      </section>
+            <>
+              <span className="dw-sub">{cut.error || '成片尚未渲染或文件丢失'}</span>
+              <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => renderCut(d.id, cut.id)}>
+                重新渲染
+              </Button>
+            </>
+          )
+        }
+      />
 
       {/* 右侧：AI 大师重剪与剪映交付 */}
       <aside className="dw-inspector" aria-label="AI 剪辑大师与交付文案">
