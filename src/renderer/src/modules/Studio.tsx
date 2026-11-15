@@ -79,7 +79,19 @@ const QUICK_PROMPTS = [
   { label: '同主线深挖', text: '保持开场同一条人物矛盾主线到底，删掉无关支线片段' }
 ]
 
-const SPEEDS = [1, 1.25, 1.5, 2, 0.75]
+const DURATION_OPTIONS = [
+  { value: 0, label: '不限时长', short: '不限' },
+  { value: 30, label: '30 秒', short: '30秒' },
+  { value: 45, label: '45 秒', short: '45秒' },
+  { value: 55, label: '55 秒', short: '55秒' },
+  { value: 60, label: '60 秒', short: '60秒' },
+  { value: 75, label: '75 秒', short: '75秒' },
+  { value: 90, label: '90 秒', short: '90秒' },
+  { value: 120, label: '2 分钟', short: '2分' },
+  { value: 180, label: '3 分钟', short: '3分' },
+  { value: 300, label: '5 分钟', short: '5分' },
+  { value: 600, label: '10 分钟', short: '10分' }
+]
 
 const VIRAL_TEMPLATES: { title: string; desc: string; style: CutStyle; target: number; prompt: string }[] = [
   {
@@ -338,7 +350,7 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
             <Select
               value={targetSec}
               onChange={setTargetSec}
-              options={[30, 45, 55, 60, 75, 90].map((v) => ({ value: v, label: `${v} 秒` }))}
+              options={DURATION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
             />
           </div>
         </div>
@@ -755,8 +767,8 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
                     size="small"
                     value={nextTarget}
                     onChange={setNextTarget}
-                    style={{ width: 78 }}
-                    options={[30, 45, 55, 60, 75, 90].map((v) => ({ value: v, label: `${v} 秒` }))}
+                    style={{ width: 84 }}
+                    options={DURATION_OPTIONS.map((o) => ({ value: o.value, label: o.short }))}
                   />
                   <span className="dw-spacer" />
                   <Button
@@ -887,59 +899,70 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
 
   return (
     <div>
-      <div className="dw-page-head">
-        <Button icon={<LeftOutlined />} onClick={backToProjects}>
-          项目列表
-        </Button>
-        <div className="dw-page-head-main">
-          <h2 className="dw-page-title">{d.title}</h2>
-          <p className="dw-page-desc">
-            {d.synthesis?.logline || `共 ${d.episodes.length} 集 · 导出纯净无字幕无配乐成片，直接进剪映二次精修`}
-          </p>
+      <div className="dw-studio-head">
+        <div className="dw-studio-head-left">
+          <Button icon={<LeftOutlined />} onClick={backToProjects} aria-label="返回项目列表" title="返回项目列表" />
+          <div className="dw-studio-title-wrap">
+            <div className="dw-studio-title-row">
+              <h2 className="dw-page-title" title={d.title}>{d.title}</h2>
+              <span className="dw-sub dw-mono">{d.episodes.length} 集</span>
+            </div>
+            {d.synthesis?.logline && (
+              <p className="dw-studio-logline" title={d.synthesis.logline}>
+                {d.synthesis.logline}
+              </p>
+            )}
+          </div>
         </div>
-        <Space wrap>
-          <Button icon={<ScanOutlined />} loading={rescanning} onClick={doRescan}>
-            重新扫描
-          </Button>
-          <Button icon={<ProfileOutlined />} disabled={g?.status !== 'done'} onClick={() => setScriptOpen(true)}>
-            全剧剧本
-          </Button>
-          <Button
-            icon={<GlobalOutlined />}
-            loading={g?.status === 'run' || g?.status === 'queue'}
-            onClick={() => setAnalyzeOpen(true)}
-          >
-            {g?.status === 'done' ? '重新分析' : '全局分析'}
-          </Button>
-          <Button
-            icon={<ImportOutlined />}
-            onClick={() => {
-              setStudioTab('replica')
-              setReplicaOpen(true)
-            }}
-          >
-            爆款复刻
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={g?.status !== 'done'}
-            onClick={() => setNewCutOpen(true)}
-          >
-            AI 新剪成片
-          </Button>
-        </Space>
-      </div>
 
-      <Segmented
-        value={studioTab}
-        onChange={(v) => setStudioTab(v as 'cuts' | 'replica')}
-        options={[
-          { value: 'cuts', label: `AI 智剪成片${cuts.length > 0 ? ` (${cuts.length})` : ''}` },
-          { value: 'replica', label: `爆款复刻${replicas.length > 0 ? ` (${replicas.length})` : ''}` }
-        ]}
-        style={{ marginBottom: 16 }}
-      />
+        <div className="dw-studio-head-right">
+          <Segmented
+            value={studioTab}
+            onChange={(v) => setStudioTab(v as 'cuts' | 'replica')}
+            options={[
+              { value: 'cuts', label: `AI 智剪${cuts.length > 0 ? ` (${cuts.length})` : ''}` },
+              { value: 'replica', label: `溯源重拼${replicas.length > 0 ? ` (${replicas.length})` : ''}` }
+            ]}
+          />
+          <Space size={6}>
+            <Button
+              icon={<ScanOutlined />}
+              loading={rescanning}
+              onClick={doRescan}
+              title="重新扫描剧集目录"
+              aria-label="重新扫描"
+            />
+            <Button
+              icon={<ProfileOutlined />}
+              disabled={g?.status !== 'done'}
+              onClick={() => setScriptOpen(true)}
+            >
+              剧本
+            </Button>
+            <Button
+              icon={<GlobalOutlined />}
+              loading={g?.status === 'run' || g?.status === 'queue'}
+              onClick={() => setAnalyzeOpen(true)}
+            >
+              {g?.status === 'done' ? '重分析' : '全局分析'}
+            </Button>
+            {studioTab === 'cuts' ? (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                disabled={g?.status !== 'done'}
+                onClick={() => setNewCutOpen(true)}
+              >
+                AI 新剪成片
+              </Button>
+            ) : (
+              <Button type="primary" icon={<ImportOutlined />} onClick={() => setReplicaOpen(true)}>
+                导入参考切片
+              </Button>
+            )}
+          </Space>
+        </div>
+      </div>
 
       {studioTab === 'replica' && (
         <>
@@ -1201,7 +1224,7 @@ function ProjectList(): ReactElement {
                     <>
                       <span>·</span>
                       <span>
-                        复刻：<b style={{ color: replicaReady > 0 ? '#7c3aed' : undefined }}>{replicaReady}</b> / {replicaTotal}
+                        重拼：<b style={{ color: replicaReady > 0 ? '#7c3aed' : undefined }}>{replicaReady}</b> / {replicaTotal}
                       </span>
                     </>
                   )}
@@ -1212,7 +1235,7 @@ function ProjectList(): ReactElement {
                     进入成片室
                   </Button>
                   <Button icon={<ImportOutlined />} onClick={() => openReplicaTab(d.id)}>
-                    爆款复刻
+                    溯源重拼
                   </Button>
                   {st !== 'done' && (
                     <Button

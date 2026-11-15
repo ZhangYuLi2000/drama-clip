@@ -608,6 +608,16 @@ export async function generatePromoCut(
       ? `\n注意：当前是批量裂变的第 ${variantIndex}/${totalVariants} 条方案，请优先锁定上方推荐的第 ${variantIndex} 条冲突主线或截然不同的开场钩子！`
       : ''
 
+  const durationRule = (sec: number): string => {
+    if (sec <= 0) {
+      return '不限固定时长（由你根据剧情完整度、解说/全剧串联需要或用户要求自主决定最合适长度，不再受 4-8 个片段数量限制，可按需选取足够多的片段以讲清完整故事线）'
+    }
+    if (sec > 90) {
+      return `约 ${sec} 秒（允许 ±15% 浮动以保证台词与叙事完整；这是中长篇剪辑/解说串联，请按需编排足够多的关键片段，不要强行压缩到 4-8 段）`
+    }
+    return `约 ${sec} 秒（允许 ±8 秒以保证台词完整，建议控制在 4-8 个精选片段内，避免碎片化闪切）`
+  }
+
   const beatBlock =
     viralBenchmark && viralBenchmark.beats.length > 0
       ? `\n=== 【对标爆款 1:1 节拍骨架（Beat Sheet 强制对齐槽位）】===\n` +
@@ -629,7 +639,7 @@ export async function generatePromoCut(
       ? viralBenchmark.beats.map((b) => b.role).join(' → ')
       : meta.roles.join(' → ')
   }
-目标成片总时长：约 ${params.targetSec} 秒（允许 ±8 秒以保证台词完整，建议控制在 4-8 个精选片段内，避免碎片化闪切），画幅：${params.ratio}${batchHint}
+目标成片总时长：${durationRule(params.targetSec)}，画幅：${params.ratio}${batchHint}
 ${params.prompt ? `用户爆款复刻/额外要求：${params.prompt}` : ''}
 
 请输出一个 JSON 对象：
@@ -688,7 +698,7 @@ export async function generateHookMatrixCuts(
 
 === 本次剪辑任务：「1 主体 × ${n} 钩子」黄金前 3 秒投流赛马矩阵 ===
 剪辑风格：【${meta.name}】${meta.desc}
-目标单条总时长：约 ${params.targetSec} 秒（其中开场钩子 4-7 秒，共享主干部分约 ${Math.max(20, params.targetSec - 6)} 秒），画幅：${params.ratio}
+目标单条总时长：${params.targetSec <= 0 ? '不限固定时长（其中开场钩子 4-7 秒，共享主干部分按剧情完整度自由编排）' : `约 ${params.targetSec} 秒（其中开场钩子 4-7 秒，共享主干部分约 ${Math.max(20, params.targetSec - 6)} 秒）`}，画幅：${params.ratio}
 ${params.prompt ? `用户额外要求：${params.prompt}` : ''}
 
 请围绕本剧最强的【同一条核心矛盾主线】，设计：
@@ -806,7 +816,7 @@ export async function regeneratePromoCut(
 === 当前待重剪的切片方案（v${existing.revision}）===
 方案名称：${existing.title}
 风格：${meta.name}（${meta.desc}）
-目标时长：约 ${targetSec} 秒
+目标时长：${targetSec <= 0 ? '不限固定时长（按剧情完整度与用户指令自由决定总时长与片段数量）' : targetSec > 90 ? `约 ${targetSec} 秒（中长篇串联，按需选取足够多关键片段）` : `约 ${targetSec} 秒`}
 当前开场花字：${existing.hookHeadline}
 当前片段编排：
 ${prevClips}
@@ -814,7 +824,7 @@ ${prevClips}
 === 用户/主理人修改指令 ===
 ${instruction.trim() || '对当前版本不满意，请从全剧高光中换一个更有冲击力的开场钩子和更紧凑的同主线冲突剪辑思路重新生成！'}
 
-请严格按照上述修改指令重新编排切片（保持同一冲突主线因果连贯，控制在 4-8 个精选片段内），输出完整 JSON（结构同标准格式：title, hookHeadline, publishCopy, conflictSummary, directorNote, clips）。`
+请严格按照上述修改指令重新编排切片（保持同一冲突主线因果连贯${targetSec <= 0 || targetSec > 90 ? '，按需选取足够多片段讲清完整脉络' : '，控制在 4-8 个精选片段内'}），输出完整 JSON（结构同标准格式：title, hookHeadline, publishCopy, conflictSummary, directorNote, clips）。`
 
   const { text, tokens } = await callDirectorModel(cfg, SYSTEM_PROMPT, userPrompt, signal)
   const parsed = extractJson(text) as Record<string, unknown>

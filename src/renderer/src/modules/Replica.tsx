@@ -125,7 +125,7 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
     setBusy(true)
     createReplica(d.id, params)
       .then((r) => {
-        toast('已加入爆款复刻队列（无需全局分析，直接用原剧集重剪）')
+        toast('已加入原片溯源重拼队列（无需全局分析，直接用原剧集重拼）')
         selectReplica(r.replicaId)
         setClipFile('')
         setTitle('')
@@ -137,18 +137,18 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
 
   return (
     <Modal
-      title="导入爆款切片 · 用本剧原片复刻干净成片"
+      title="导入参考切片 · 逐帧溯源原片重拼"
       open={open}
       onCancel={onClose}
       onOk={submit}
-      okText="开始复刻"
+      okText="开始重拼"
       cancelText="取消"
       confirmLoading={busy}
       width={600}
     >
-      <div className="dw-field-label">爆款切片视频</div>
+      <div className="dw-field-label">参考切片视频（需为本剧剪辑产物）</div>
       <Space.Compact block style={{ marginBottom: 12 }}>
-        <Input value={clipFile} readOnly placeholder="选择要复刻的爆款视频（mp4/mov/mkv…）" />
+        <Input value={clipFile} readOnly placeholder="选择要溯源还原的参考切片（mp4/mov/mkv…）" />
         <Button icon={<FolderOpenOutlined />} onClick={pickFile}>
           选择文件
         </Button>
@@ -259,7 +259,7 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
         ]}
       />
       <p className="dw-sub" style={{ marginTop: 12, marginBottom: 0 }}>
-        逐帧溯源爆款画面出自本剧哪一集哪一帧，再用原片原画幅、原生帧率、原声对白重剪出干净成片（无水印/无字幕/无镜像）。
+        逐帧溯源参考切片出自本剧哪一集哪一帧，再用原片原画幅、原生帧率、原声对白重拼出干净成片（无水印/无字幕/无镜像）。
       </p>
     </Modal>
   )
@@ -338,7 +338,7 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
     if (hasEdlTimeline) return edlSegments
     return [{
       key: `single-${view}`,
-      label: view === 'clip' ? '原爆款切片' : '复刻成片',
+      label: view === 'clip' ? '原参考切片' : '重拼成片',
       color: '#3b82f6',
       seconds: timelineTotal
     }]
@@ -361,7 +361,7 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
   const stageText =
     task.status === 'indexing' ? '建立指纹索引' :
     task.status === 'tracing' ? '逐帧溯源' :
-    task.status === 'cutting' ? '按原片重剪' : '排队等待'
+    task.status === 'cutting' ? '按原片重拼' : '排队等待'
 
   return (
     <>
@@ -374,8 +374,8 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
         duration={timelineTotal}
         seekRequest={seekRequest}
         enableSubtitlePreview={false}
-        ariaLabel="复刻监视器"
-        timelineTitle={hasEdlTimeline ? '复刻结构时间轴' : view === 'clip' ? '原切片时间轴' : '复刻成片时间轴'}
+        ariaLabel="溯源重拼监视器"
+        timelineTitle={hasEdlTimeline ? '溯源重拼时间轴' : view === 'clip' ? '原参考切片时间轴' : '重拼成片时间轴'}
         timelineHint={hasEdlTimeline ? `共 ${edl.length} 段 · 蓝=连续 / 紫=静帧 / 灰=无出处` : undefined}
         headerLeft={
           <Space size={8}>
@@ -392,8 +392,8 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
             value={view}
             onChange={(v) => setView(v as 'output' | 'clip')}
             options={[
-              { value: 'output', label: '复刻成片', disabled: !ready },
-              { value: 'clip', label: '原爆款切片' }
+              { value: 'output', label: '重拼成片', disabled: !ready },
+              { value: 'clip', label: '原参考切片' }
             ]}
           />
         }
@@ -412,7 +412,7 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
                 icon={<StopOutlined />}
                 onClick={() =>
                   stopTasks(d.id)
-                    .then(() => toast('已终止复刻任务', 'info'))
+                    .then(() => toast('已终止重拼任务', 'info'))
                     .catch(() => toast('终止失败', 'info'))
                 }
               >
@@ -423,14 +423,14 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
             <>
               <span className="dw-sub">{task.error || '成片尚未生成'}</span>
               <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => retryReplica(d.id, task.id)}>
-                重试复刻
+                重试重拼
               </Button>
             </>
           )
         }
       />
 
-      <aside className="dw-inspector" aria-label="复刻详情与交付">
+      <aside className="dw-inspector" aria-label="溯源重拼详情与交付">
         {task.stats && (
           <div className="dw-panel">
             <div className="dw-panel-head">
@@ -568,7 +568,7 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
             打开成片目录
           </Button>
           <Popconfirm
-            title="删除该复刻任务？"
+            title="删除该重拼任务？"
             description="成片与溯源产物将一并删除"
             okText="删除"
             cancelText="取消"
@@ -577,7 +577,7 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
               deleteReplica(d.id, task.id)
                 .then(() => {
                   selectReplica(null)
-                  toast('已删除复刻任务', 'info')
+                  toast('已删除重拼任务', 'info')
                 })
                 .catch((e: unknown) => toast(e instanceof Error ? e.message : '删除失败', 'info'))
             }
@@ -605,10 +605,10 @@ export default function ReplicaPanel({ d, onImport }: { d: Drama; onImport: () =
       <div className="dw-panel" style={{ padding: '48px 20px', textAlign: 'center' }}>
         <Empty
           image={<ImportOutlined style={{ fontSize: 42, color: 'var(--text-muted)' }} />}
-          description="导入一条爆款切片，用本剧原片复刻出干净成片（无需全局分析）"
+          description="导入一条本剧参考切片，逐帧溯源并用原片重拼出无水印干净成片（无需全局分析）"
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={onImport}>
-            导入第一条爆款
+            导入第一条参考切片
           </Button>
         </Empty>
       </div>
@@ -617,9 +617,9 @@ export default function ReplicaPanel({ d, onImport }: { d: Drama; onImport: () =
 
   return (
     <div className="dw-nle-grid">
-      <aside className="dw-panel" aria-label="复刻任务列表">
+      <aside className="dw-panel" aria-label="重拼任务列表">
         <div className="dw-panel-head">
-          <span className="dw-panel-title">复刻任务</span>
+          <span className="dw-panel-title">重拼任务</span>
           <span className="dw-sub dw-mono">{replicas.length}</span>
         </div>
         <div className="dw-cut-list">
@@ -652,7 +652,7 @@ export default function ReplicaPanel({ d, onImport }: { d: Drama; onImport: () =
           ))}
         </div>
         <Button block type="dashed" icon={<PlusOutlined />} style={{ marginTop: 10 }} onClick={onImport}>
-          导入爆款视频
+          导入参考切片
         </Button>
       </aside>
       {active && <ReplicaWorkspace d={d} task={active} />}

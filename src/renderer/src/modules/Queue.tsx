@@ -13,7 +13,7 @@ const KIND_LABEL: Record<JobKind, string> = {
   global: '全局分幕分析',
   'generate-cut': 'AI 大师编排',
   'render-cut': '渲染成片',
-  replica: '爆款复刻'
+  replica: '溯源重拼'
 }
 
 function fmtTime(t: number): string {

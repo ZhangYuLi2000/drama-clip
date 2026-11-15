@@ -91,7 +91,7 @@ export default function Settings(): ReactElement {
     if (!replica) return
     setSavingReplica(true)
     saveSettings({ replica })
-      .then(() => toast('复刻引擎设置已保存'))
+      .then(() => toast('溯源重拼引擎设置已保存'))
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '保存失败', 'info'))
       .finally(() => setSavingReplica(false))
   }
@@ -180,11 +180,11 @@ export default function Settings(): ReactElement {
       {replica && (
         <div className="dw-panel" style={{ marginTop: 16 }}>
           <div className="dw-panel-head">
-            <span className="dw-panel-title">3. 爆款复刻引擎（本地溯源，无需模型/API）</span>
+            <span className="dw-panel-title">3. 溯源重拼引擎（本地指纹溯源，无需模型/API）</span>
             <Space size={8} style={{ flex: 'none' }}>
               <Tag style={{ marginInlineEnd: 0 }}>本地引擎</Tag>
               <Button type="primary" size="small" loading={savingReplica} onClick={saveReplica}>
-                保存复刻设置
+                保存重拼设置
               </Button>
             </Space>
           </div>
