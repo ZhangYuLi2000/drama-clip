@@ -86,7 +86,7 @@ export default function Panels(): ReactElement {
         <Form.Item>
           <Space>
             <Switch checked={autoStart} onChange={setAutoStart} />
-            <span>导入后自动启动全剧分析，并直接生成 2 条引流成片</span>
+            <span>导入后自动启动全剧分析，并直接生成 3 条引流成片</span>
           </Space>
         </Form.Item>
       </Form>

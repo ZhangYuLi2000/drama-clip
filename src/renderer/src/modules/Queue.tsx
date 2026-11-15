@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { ClearOutlined, StopOutlined } from '@ant-design/icons'
-import { Button, Card, Empty, Progress, Space, Tag } from 'antd'
+import { ClearOutlined, CopyOutlined, StopOutlined } from '@ant-design/icons'
+import { Button, Empty, Progress, Space, Tag } from 'antd'
 import type { JobKind } from '../../../shared/types'
 import { useLibrary } from '../library'
 import { toast } from '../store'
@@ -41,61 +41,72 @@ export default function Queue(): ReactElement {
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '终止失败', 'info'))
   }
 
+  const copyLogs = (): void => {
+    const text = shown.map((l) => `${fmtTime(l.t)} [${l.level.toUpperCase()}] ${l.msg}`).join('\n')
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => toast('已复制当前日志'))
+      .catch(() => toast('复制失败', 'info'))
+  }
+
   return (
     <div>
       <div className="dw-page-head">
-        <div>
+        <div className="dw-page-head-main">
           <h2 className="dw-page-title">任务队列</h2>
           <p className="dw-page-desc">实时查看媒体预处理、全局分幕分析、AI 编排与 FFmpeg 渲染日志（保留最近 500 条）。</p>
         </div>
-        <span className="dw-spacer" />
         <Button danger icon={<StopOutlined />} disabled={running === 0 && !job} onClick={doStop}>
           终止全部任务
         </Button>
       </div>
-      <Card
-        size="small"
-        title="当前任务"
-        extra={
-          (running > 0 || job) && (
-            <Button size="small" danger type="link" icon={<StopOutlined />} onClick={doStop}>
-              立即停止
-            </Button>
-          )
-        }
-        style={{ marginBottom: 16 }}
-        styles={{ body: { padding: 16 } }}
-      >
+
+      <div className="dw-panel" style={{ marginBottom: 16 }}>
+        <div className="dw-panel-head">
+          <span className="dw-panel-title">当前执行状态</span>
+          <Space size={8}>
+            <Tag color={running > 0 ? 'processing' : 'default'} style={{ marginInlineEnd: 0 }}>
+              排队/运行 {running}
+            </Tag>
+            <Tag color="success" style={{ marginInlineEnd: 0 }}>
+              已完成 {logStats.done}
+            </Tag>
+            {logStats.failed > 0 && (
+              <Tag color="error" style={{ marginInlineEnd: 0 }}>
+                失败 {logStats.failed}
+              </Tag>
+            )}
+          </Space>
+        </div>
+
         {job ? (
           <Space direction="vertical" style={{ width: '100%' }} size={8}>
-            <Space>
+            <Space wrap>
               <Tag color="processing">{KIND_LABEL[job.kind]}</Tag>
               <b>{job.label}</b>
-              {running > 1 && <span className="dw-sub">后面还排着 {running - 1} 个</span>}
+              {running > 1 && <span className="dw-sub">后面还排着 {running - 1} 个任务</span>}
             </Space>
             <Progress percent={job.pct} size="small" />
           </Space>
         ) : (
-          <Space>
-            <span className="dw-sub">当前没有正在执行的任务</span>
-            {running > 0 && <Tag>排队 {running}</Tag>}
-            <span className="dw-sub">
-              本次运行：完成 {logStats.done} · 失败 {logStats.failed}
-            </span>
-          </Space>
+          <span className="dw-sub">当前空闲，没有正在执行的后台任务。</span>
         )}
-      </Card>
-      <Card
-        size="small"
-        title="任务日志"
-        extra={
-          <Space>
+      </div>
+
+      <div className="dw-panel">
+        <div className="dw-panel-head">
+          <span className="dw-panel-title">实时执行日志（最新在上）</span>
+          <Space size={6}>
             <Button size="small" type={errOnly ? 'primary' : 'default'} onClick={() => setErrOnly(!errOnly)}>
               只看错误
+            </Button>
+            <Button size="small" icon={<CopyOutlined />} disabled={shown.length === 0} onClick={copyLogs}>
+              复制日志
             </Button>
             <Button
               size="small"
               icon={<ClearOutlined />}
+              disabled={logs.length === 0}
               onClick={() => {
                 clearLogs()
                   .then(() => toast('日志已清空', 'info'))
@@ -105,9 +116,8 @@ export default function Queue(): ReactElement {
               清空
             </Button>
           </Space>
-        }
-        styles={{ body: { padding: '8px 16px 16px' } }}
-      >
+        </div>
+
         {shown.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -123,7 +133,7 @@ export default function Queue(): ReactElement {
             ))}
           </div>
         )}
-      </Card>
+      </div>
     </div>
   )
 }

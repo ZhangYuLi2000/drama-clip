@@ -16,7 +16,7 @@ import type {
   ScanResult
 } from '../../src/shared/types'
 import { findDrama, getLibrary, saveLibrary } from './db'
-import { readGlobalScript } from './global'
+import { globalDir, readGlobalScript } from './global'
 import {
   broadcastLibrary,
   clearJobLogs,
@@ -33,6 +33,7 @@ import {
 } from './jobs'
 import { fileExists } from './media'
 import { readReplicaEdl } from './replica-engine'
+import { cleanupCutFiles } from './render'
 import { getSettings, saveSettings } from './settings'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.avi', '.flv', '.ts', '.m4v', '.wmv', '.webm'])
@@ -241,11 +242,9 @@ export function registerIpc(): void {
     }
     getLibrary().dramas.push(drama)
     saveLibrary()
-    for (const ep of episodes) {
-      enqueue('probe', drama.id, ep.id)
-      enqueue('thumb', drama.id, ep.id)
-      enqueue('shots', drama.id, ep.id)
-    }
+    for (const ep of episodes) enqueue('probe', drama.id, ep.id)
+    for (const ep of episodes) enqueue('thumb', drama.id, ep.id)
+    for (const ep of episodes) enqueue('shots', drama.id, ep.id)
     if (autoStart) {
       enqueueGlobal(drama.id, { from: episodes[0].n, to: episodes[episodes.length - 1].n }, 3)
     }
@@ -258,10 +257,14 @@ export function registerIpc(): void {
     const lib = getLibrary()
     const idx = lib.dramas.findIndex((d) => d.id === dramaId)
     if (idx < 0) return fail('短剧不存在')
-    for (const cut of lib.dramas[idx].cuts ?? []) {
-      if (cut.output) fs.rmSync(cut.output, { force: true })
-      if (cut.srtPath) fs.rmSync(cut.srtPath, { force: true })
+    const target = lib.dramas[idx]
+    for (const cut of target.cuts ?? []) {
+      cleanupCutFiles(cut.output, cut.srtPath)
     }
+    for (const ep of target.episodes) {
+      if (ep.thumb) fs.rmSync(ep.thumb, { force: true })
+    }
+    fs.rmSync(globalDir(dramaId), { recursive: true, force: true })
     lib.dramas.splice(idx, 1)
     saveLibrary()
     broadcastLibrary()
@@ -286,11 +289,9 @@ export function registerIpc(): void {
     }
     drama.episodes.sort((a, b) => a.n - b.n)
     saveLibrary()
-    for (const ep of added) {
-      enqueue('probe', drama.id, ep.id)
-      enqueue('thumb', drama.id, ep.id)
-      enqueue('shots', drama.id, ep.id)
-    }
+    for (const ep of added) enqueue('probe', drama.id, ep.id)
+    for (const ep of added) enqueue('thumb', drama.id, ep.id)
+    for (const ep of added) enqueue('shots', drama.id, ep.id)
     broadcastLibrary()
     return ok({ added: added.length })
   })
@@ -355,8 +356,7 @@ export function registerIpc(): void {
     const idx = drama.cuts.findIndex((c) => c.id === cutId)
     if (idx < 0) return fail('切片不存在')
     const cut = drama.cuts[idx]
-    if (cut.output) fs.rmSync(cut.output, { force: true })
-    if (cut.srtPath) fs.rmSync(cut.srtPath, { force: true })
+    cleanupCutFiles(cut.output, cut.srtPath)
     drama.cuts.splice(idx, 1)
     saveLibrary()
     broadcastLibrary()

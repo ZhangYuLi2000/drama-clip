@@ -21,9 +21,10 @@ export function initDb(): void {
         }
         for (const cut of d.cuts ?? []) {
           if (cut.status === 'rendering' || cut.status === 'draft') {
-            cut.status = 'fail'
-            cut.pct = undefined
-            cut.error = '应用重启导致渲染中断，可点击重新渲染'
+            const hasOutput = Boolean(cut.output && fs.existsSync(cut.output))
+            cut.status = hasOutput ? 'ready' : 'fail'
+            cut.pct = hasOutput ? 100 : undefined
+            cut.error = hasOutput ? undefined : '应用重启导致渲染中断，可点击重新渲染'
           }
         }
         for (const rep of d.replicas ?? []) {

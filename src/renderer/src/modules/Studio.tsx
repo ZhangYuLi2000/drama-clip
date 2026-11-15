@@ -69,7 +69,38 @@ const QUICK_PROMPTS = [
   { label: '开头再炸一点', text: '开头前 3 秒不够炸，换个最狠的冲突或巴掌名场面直接开场' },
   { label: '节奏压缩加快', text: '节奏再紧凑一点，删掉多余铺垫，控制在 40 秒内' },
   { label: '结尾留强悬念', text: '结尾停在反转即将揭晓或反派刚开口的强悬念处' },
-  { label: '换个思路重剪', text: '换一个完全不同的剪辑思路和选段组合重新生成' }
+  { label: '同主线深挖', text: '保持开场同一条人物矛盾主线到底，删掉无关支线片段' }
+]
+
+const VIRAL_TEMPLATES: { title: string; desc: string; style: CutStyle; target: number; prompt: string }[] = [
+  {
+    title: '极度受辱 → 亮牌秒打脸',
+    desc: '前3秒当众羞辱/逼签协议，紧接隐忍加码与亮明身份反杀',
+    style: 'reversal',
+    target: 55,
+    prompt: '复刻爆款结构：0-4s最强当众羞辱或逼迫开场 → 反派步步紧逼加码赌注 → 主角亮出真正底牌/大佬护短反击 → 反派震惊悔恨处卡点'
+  },
+  {
+    title: '背叛名场面 → 绝地断亲/反杀',
+    desc: '开场抓包背叛或偏心逼迫，主角果断翻脸让对方追悔莫及',
+    style: 'conflict',
+    target: 45,
+    prompt: '复刻爆款结构：开场直接切入背叛/偏心/污蔑最扎心的一句台词 → 主角不再隐忍直接掀桌断绝关系或反制 → 对方慌乱求饶'
+  },
+  {
+    title: '反派叫嚣 → 降维打击卡点',
+    desc: '反派狂妄立下毒誓，大人物/真相即将落地前0.5秒断头',
+    style: 'suspense',
+    target: 60,
+    prompt: '复刻爆款结构：开场反派最嚣张的威胁或立Flag → 矛盾层层升级到无法收场 → 在关键人物登场或真相揭晓的最高潮处戛然而止留强悬念'
+  },
+  {
+    title: '真假身份对峙 → 铁证悬念',
+    desc: '冒领功劳或身份顶替对峙，拿出核心信物瞬间卡点引流',
+    style: 'suspense',
+    target: 60,
+    prompt: '复刻爆款结构：聚焦身份顶替/冒领恩情的正面冲突主线，前3秒抛出最离谱的颠倒黑白台词，层层对峙后在亮出铁证瞬间卡点'
+  }
 ]
 
 function GlobalAnalyzeModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: () => void }): ReactElement {
@@ -147,7 +178,7 @@ function GlobalAnalyzeModal({ d, open, onClose }: { d: Drama; open: boolean; onC
         <Select
           value={autoCutCount}
           onChange={setAutoCutCount}
-          style={{ width: 160 }}
+          style={{ width: 168 }}
           options={[
             { value: 0, label: '0 条（稍后手动点生成）' },
             { value: 1, label: '1 条（冲突爆破）' },
@@ -191,7 +222,7 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
       okText={`立即生成 ${count} 条成片`}
       cancelText="取消"
       confirmLoading={busy}
-      width={560}
+      width={580}
     >
       <div className="dw-field-label">剪辑风格</div>
       <Segmented
@@ -208,7 +239,7 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
         }))}
         style={{ marginBottom: 6 }}
       />
-      <p className="dw-sub" style={{ marginTop: 0, marginBottom: 14 }}>
+      <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
         {CUT_STYLES[style].desc}
       </p>
       <Space wrap style={{ marginBottom: 14 }}>
@@ -224,7 +255,7 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
           value={targetSec}
           onChange={setTargetSec}
           style={{ width: 96 }}
-          options={[30, 45, 60, 75, 90].map((v) => ({ value: v, label: `${v} 秒` }))}
+          options={[30, 45, 55, 60, 75, 90].map((v) => ({ value: v, label: `${v} 秒` }))}
         />
         <span className="dw-sub">画幅</span>
         <Select
@@ -237,12 +268,32 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
           ]}
         />
       </Space>
-      <div className="dw-field-label">补充剪辑要求（可选 · 自动避开已用过的开场钩子）</div>
+
+      <div className="dw-field-label">一键套用爆款复刻母版（点击自动填入结构与参数）</div>
+      <div className="dw-tpl-grid">
+        {VIRAL_TEMPLATES.map((tpl) => (
+          <button
+            type="button"
+            key={tpl.title}
+            className="dw-tpl-btn"
+            onClick={() => {
+              setStyle(tpl.style)
+              setTargetSec(tpl.target)
+              setPrompt(tpl.prompt)
+            }}
+          >
+            <span className="dw-tpl-title">{tpl.title}</span>
+            <span className="dw-tpl-desc">{tpl.desc}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="dw-field-label">补充剪辑 / 对标复刻要求（可选 · 自动预筛未使用的黄金钩子）</div>
       <Input.TextArea
         className="dw-auto-textarea"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="例如：重点突出女主亮明千金身份打脸反派，把第 6 集的耳光放最前面做钩子"
+        placeholder="可粘贴对标爆款的结构节拍，或指定主线：例如重点突出女主亮明千金身份打脸反派，把第 6 集的耳光放最前面做钩子"
       />
     </Modal>
   )
@@ -344,6 +395,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   const [dur, setDur] = useState(0)
   const [muted, setMuted] = useState(false)
   const [videoErr, setVideoErr] = useState(false)
+  const [inspectedIdx, setInspectedIdx] = useState(0)
 
   const [instruction, setInstruction] = useState('')
   const [nextStyle, setNextStyle] = useState<CutStyle>(cut.style)
@@ -356,6 +408,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
     setT(0)
     setDur(0)
     setVideoErr(false)
+    setInspectedIdx(0)
     setNextStyle(cut.style)
     setNextTarget(cut.targetSec)
     setInstruction('')
@@ -399,13 +452,36 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
       .finally(() => setExportBusy(false))
   }
 
+  // 计算每段在合成时间轴上的起止偏移与当前命中段
+  const totalSegDur = cut.clips.reduce((sum, c) => sum + Math.max(0.5, c.out - c.in), 0) || 1
+  let accOffset = 0
+  const segments = cut.clips.map((c, idx) => {
+    const segDur = Math.max(0.5, c.out - c.in)
+    const startAt = accOffset
+    accOffset += segDur
+    const active = playable && t >= startAt && t < startAt + segDur - 0.02
+    return { c, idx, segDur, startAt, active, pct: segDur / totalSegDur }
+  })
+  const playingSeg = segments.find((s) => s.active)
+  const currentSeg = playingSeg ?? segments[Math.min(inspectedIdx, Math.max(0, segments.length - 1))] ?? segments[0]
+
+  const seekToSeg = (idx: number, startAt: number): void => {
+    setInspectedIdx(idx)
+    const v = videoRef.current
+    if (!v || !playable) return
+    v.currentTime = startAt
+    setT(startAt)
+  }
+
   return (
     <>
       {/* 中央监视器 */}
       <section className="dw-stage" aria-label="成片监视器">
         <div className="dw-panel-head" style={{ marginBottom: 0 }}>
-          <Space size={8}>
-            <span className="dw-panel-title">{cut.title}</span>
+          <Space size={8} style={{ minWidth: 0, flex: 1 }}>
+            <span className="dw-panel-title" title={cut.title}>
+              {cut.title}
+            </span>
             <Tag color={STYLE_COLOR[cut.style]} style={{ marginInlineEnd: 0 }}>
               {CUT_STYLES[cut.style].name}
             </Tag>
@@ -413,7 +489,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               v{cut.revision}
             </Tag>
           </Space>
-          <span className="dw-sub dw-mono">
+          <span className="dw-sub dw-mono" style={{ flex: 'none' }}>
             {cut.ratio} · {cut.actualSec}s
           </span>
         </div>
@@ -425,8 +501,8 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
                 key={`${cut.output}-${cut.revision}`}
                 ref={videoRef}
                 src={mediaUrl(cut.output!)}
-                width={cut.ratio === '9:16' ? 310 : 520}
-                height={cut.ratio === '9:16' ? 551 : 292}
+                width={cut.ratio === '9:16' ? 296 : 520}
+                height={cut.ratio === '9:16' ? 526 : 292}
                 preload="metadata"
                 playsInline
                 muted={muted}
@@ -448,7 +524,12 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
                 onError={() => setVideoErr(true)}
               />
               <span className="dw-ptime">{fmtSec(t)}</span>
-              <button type="button" className="dw-play-overlay" onClick={togglePlay} aria-label="播放 / 暂停">
+              <button
+                type="button"
+                className={`dw-play-overlay${playing ? ' is-playing' : ''}`}
+                onClick={togglePlay}
+                aria-label="播放 / 暂停"
+              >
                 {playing ? <PauseOutlined /> : <CaretRightOutlined />}
               </button>
             </>
@@ -495,7 +576,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               onClick={togglePlay}
               aria-label="播放 / 暂停"
             />
-            <span className="dw-sub dw-mono" style={{ minWidth: 84 }}>
+            <span className="dw-sub dw-mono" style={{ minWidth: 82 }}>
               {fmtSec(t)} / {fmtSec(dur || cut.actualSec)}
             </span>
             <Slider
@@ -520,25 +601,81 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
           </div>
         )}
 
-        <div>
-          <div className="dw-sec-title" style={{ marginBottom: 6 }}>
-            成片结构时间轴（鼠标悬停查看来源）
+        <div className="dw-tl-box">
+          <div className="dw-tl-head">
+            <span className="dw-sec-title" style={{ marginBottom: 0 }}>
+              成片结构时间轴（点击片段跳转 · 共 {cut.clips.length} 段）
+            </span>
+            <span className="dw-sub dw-mono">
+              当前 #{(currentSeg?.idx ?? 0) + 1}/{cut.clips.length}
+            </span>
           </div>
+
           <div className="dw-tl-strip">
-            {cut.clips.map((c, idx) => {
-              const segDur = Math.max(0.5, c.out - c.in)
+            {segments.map(({ c, idx, segDur, startAt, pct }) => {
+              const isSelected = currentSeg?.idx === idx
               return (
                 <Tooltip
                   key={`${c.epId}-${c.in}-${idx}`}
-                  title={`第 ${c.epN} 集 ${c.in.toFixed(1)}–${c.out.toFixed(1)}s · [${c.role}] ${c.why}`}
+                  title={`#${idx + 1} 第 ${c.epN} 集 ${c.in.toFixed(1)}–${c.out.toFixed(1)}s · [${c.role}] ${c.why}`}
                 >
-                  <span
-                    className="dw-tl-seg"
-                    style={{ flex: segDur, background: ROLE_HEX[c.role] ?? '#3b82f6' }}
+                  <button
+                    type="button"
+                    className={`dw-tl-seg${isSelected ? ' is-now' : ''}`}
+                    style={{ flex: `${segDur} 1 0%`, background: ROLE_HEX[c.role] ?? '#3b82f6' }}
+                    onClick={() => seekToSeg(idx, startAt)}
+                    aria-label={`跳转到第 ${idx + 1} 段 ${c.role}`}
                   >
-                    {c.role} · {segDur.toFixed(0)}s
-                  </span>
+                    {pct >= 0.16 ? `${c.role} · ${segDur.toFixed(0)}s` : ''}
+                  </button>
                 </Tooltip>
+              )
+            })}
+          </div>
+
+          {currentSeg && (
+            <div className="dw-tl-active-card">
+              <div className="dw-tl-active-top">
+                <Tag
+                   style={{
+                    marginInlineEnd: 0,
+                    borderColor: 'transparent',
+                    background: ROLE_HEX[currentSeg.c.role] ?? '#3b82f6',
+                    color: '#fff'
+                  }}
+                >
+                  #{currentSeg.idx + 1} {currentSeg.c.role}
+                </Tag>
+                <span style={{ fontWeight: 600 }}>第 {currentSeg.c.epN} 集</span>
+                <span className="dw-sub dw-mono">
+                  {currentSeg.c.in.toFixed(1)}–{currentSeg.c.out.toFixed(1)}s（{currentSeg.segDur.toFixed(1)}s）
+                </span>
+              </div>
+              <div className="dw-tl-active-why">
+                {currentSeg.c.why || '叙事关键推进片段'}
+                {currentSeg.c.quote ? ` · 「${currentSeg.c.quote}」` : ''}
+              </div>
+            </div>
+          )}
+
+          <div className="dw-tl-legend">
+            {segments.map(({ c, idx, segDur, startAt }) => {
+              const isSelected = currentSeg?.idx === idx
+              return (
+                <button
+                  type="button"
+                  key={`pill-${c.epId}-${c.in}-${idx}`}
+                  className={`dw-tl-pill${isSelected ? ' is-now' : ''}`}
+                  onClick={() => seekToSeg(idx, startAt)}
+                  title={`第 ${c.epN} 集 ${c.in.toFixed(1)}–${c.out.toFixed(1)}s · ${c.why}`}
+                >
+                  <span className="dw-tl-dot" style={{ background: ROLE_HEX[c.role] ?? '#3b82f6' }} />
+                  <span className="dw-mono">#{idx + 1}</span>
+                  <span>{c.role}</span>
+                  <span className="dw-mono" style={{ opacity: 0.75 }}>
+                    第{c.epN}集 {segDur.toFixed(0)}s
+                  </span>
+                </button>
               )
             })}
           </div>
@@ -547,6 +684,43 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
 
       {/* 右侧：AI 大师重剪与剪映交付 */}
       <aside className="dw-inspector" aria-label="AI 剪辑大师与交付文案">
+        <div className="dw-panel" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Button
+            type="primary"
+            size="large"
+            block
+            icon={<DownloadOutlined />}
+            disabled={!playable}
+            loading={exportBusy}
+            onClick={doExport}
+          >
+            导出剪映素材包（MP4 + SRT + 文案）
+          </Button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button
+              size="small"
+              style={{ flex: 1 }}
+              icon={<FolderOpenOutlined />}
+              disabled={!playable}
+              onClick={() => cut.output && openOutput(cut.output)}
+            >
+              打开成片目录
+            </Button>
+            <Popconfirm
+              title="删除这条成片方案？"
+              description="将同时删除已渲染的视频与字幕文件"
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => deleteCut(d.id, cut.id)}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} aria-label="删除成片">
+                删除
+              </Button>
+            </Popconfirm>
+          </div>
+        </div>
+
         <div className="dw-panel">
           <div className="dw-panel-head">
             <span className="dw-panel-title">AI 大师重剪指令</span>
@@ -565,7 +739,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               }
             }}
           />
-          <Space size={6} wrap style={{ marginTop: 10, marginBottom: 12 }}>
+          <Space size={6} wrap style={{ marginTop: 8, marginBottom: 10 }}>
             {QUICK_PROMPTS.map((q) => (
               <Button key={q.label} size="small" onClick={() => setInstruction(q.text)}>
                 {q.label}
@@ -588,7 +762,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               value={nextTarget}
               onChange={setNextTarget}
               style={{ width: 84 }}
-              options={[30, 45, 60, 75, 90].map((v) => ({ value: v, label: `${v} 秒` }))}
+              options={[30, 45, 55, 60, 75, 90].map((v) => ({ value: v, label: `${v} 秒` }))}
             />
             <span className="dw-spacer" />
             <Button
@@ -618,7 +792,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
             <div className="dw-hook-box">{cut.hookHeadline || '—'}</div>
           </div>
 
-          <div className="dw-copy-block" style={{ marginTop: 10 }}>
+          <div className="dw-copy-block" style={{ marginTop: 8 }}>
             <div className="dw-copy-head">
               <span className="dw-field-label">引流发布文案</span>
               <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => copyText(cut.publishCopy, '发布文案')}>
@@ -630,9 +804,9 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
             </p>
           </div>
 
-          <div style={{ marginTop: 10 }}>
-            <div className="dw-field-label">冲突拆解与节奏备注</div>
-            <p className="dw-sub" style={{ margin: 0, lineHeight: 1.6 }}>
+          <div style={{ marginTop: 8 }}>
+            <div className="dw-field-label">冲突主线与节奏自检</div>
+            <p className="dw-sub" style={{ margin: 0, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
               {cut.conflictSummary}
               {cut.directorNote ? ` · ${cut.directorNote}` : ''}
             </p>
@@ -641,57 +815,35 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
 
         <div className="dw-panel">
           <div className="dw-panel-head">
-            <span className="dw-panel-title">分镜明细</span>
+            <span className="dw-panel-title">分镜明细（点击定位播放）</span>
             <span className="dw-sub dw-mono">
               {cut.clips.length} 段 · {cut.actualSec}s
             </span>
           </div>
           <div className="dw-lines">
-            {cut.clips.map((c, idx) => (
-              <div className="dw-clip-row" key={`${c.epId}-${c.in}-${idx}`}>
-                <span className="dw-clip-order">{idx + 1}</span>
-                <Tag style={{ marginInlineEnd: 0 }}>{c.role}</Tag>
-                <span style={{ fontWeight: 500 }}>第 {c.epN} 集</span>
-                <span className="dw-sub dw-mono">
-                  {c.in.toFixed(1)}–{c.out.toFixed(1)}s
-                </span>
-                <span className="dw-clip-why">{c.why}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="dw-panel" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Button
-            type="primary"
-            size="large"
-            block
-            icon={<DownloadOutlined />}
-            disabled={!playable}
-            loading={exportBusy}
-            onClick={doExport}
-          >
-            导出剪映素材包（MP4 + SRT + 文案）
-          </Button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button
-              style={{ flex: 1 }}
-              icon={<FolderOpenOutlined />}
-              disabled={!playable}
-              onClick={() => cut.output && openOutput(cut.output)}
-            >
-              打开文件位置
-            </Button>
-            <Popconfirm
-              title="删除这条成片方案？"
-              description="将同时删除已渲染的视频与字幕文件"
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => deleteCut(d.id, cut.id)}
-            >
-              <Button danger icon={<DeleteOutlined />} aria-label="删除成片" />
-            </Popconfirm>
+            {segments.map(({ c, idx, startAt }) => {
+              const isSelected = currentSeg?.idx === idx
+              return (
+                <button
+                  type="button"
+                  className={`dw-clip-row${isSelected ? ' is-now' : ''}`}
+                  key={`${c.epId}-${c.in}-${idx}`}
+                  onClick={() => seekToSeg(idx, startAt)}
+                >
+                  <span className="dw-clip-order">{idx + 1}</span>
+                  <div className="dw-clip-body">
+                    <div className="dw-clip-meta">
+                      <Tag style={{ marginInlineEnd: 0 }}>{c.role}</Tag>
+                      <span style={{ fontWeight: 500 }}>第 {c.epN} 集</span>
+                      <span className="dw-sub dw-mono">
+                        {c.in.toFixed(1)}–{c.out.toFixed(1)}s
+                      </span>
+                    </div>
+                    <div className="dw-clip-why">{c.why}</div>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
       </aside>
@@ -733,13 +885,12 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
         <Button icon={<LeftOutlined />} onClick={backToProjects}>
           项目列表
         </Button>
-        <div>
+        <div className="dw-page-head-main">
           <h2 className="dw-page-title">{d.title}</h2>
           <p className="dw-page-desc">
             {d.synthesis?.logline || `共 ${d.episodes.length} 集 · 导出纯净无字幕无配乐成片，直接进剪映二次精修`}
           </p>
         </div>
-        <span className="dw-spacer" />
         <Space wrap>
           <Button icon={<ScanOutlined />} loading={rescanning} onClick={doRescan}>
             重新扫描
@@ -869,7 +1020,9 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
           <aside className="dw-panel" aria-label="成片方案列表">
             <div className="dw-panel-head">
               <span className="dw-panel-title">成片方案</span>
-              <span className="dw-sub dw-mono">{cuts.length}</span>
+              <span className="dw-sub dw-mono">
+                {cuts.filter((c) => c.status === 'ready').length}/{cuts.length} 就绪
+              </span>
             </div>
             <div className="dw-cut-list">
               {cuts.map((c) => (
@@ -887,15 +1040,21 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
                       v{c.revision}
                     </Tag>
                     <span className="dw-spacer" />
-                    <span className="dw-sub dw-mono">{c.actualSec}s</span>
+                    <span className="dw-sub dw-mono">
+                      {c.clips.length}段 · {c.actualSec}s
+                    </span>
                   </div>
-                  <div className="dw-cut-item-title">{c.title}</div>
+                  <div className="dw-cut-item-title" title={c.title}>
+                    {c.title}
+                  </div>
                   <div className="dw-cut-item-meta">
-                    {c.status === 'ready' && <Tag color="success">可导出</Tag>}
-                    {c.status === 'rendering' && <Tag color="processing">渲染 {c.pct ?? 0}%</Tag>}
-                    {c.status === 'draft' && <Tag>待渲染</Tag>}
-                    {c.status === 'fail' && <Tag color="error">失败</Tag>}
-                    <span className="dw-cut-hook">{c.hookHeadline}</span>
+                    {c.status === 'ready' && <Tag color="success" style={{ marginInlineEnd: 0 }}>可导出</Tag>}
+                    {c.status === 'rendering' && <Tag color="processing" style={{ marginInlineEnd: 0 }}>渲染 {c.pct ?? 0}%</Tag>}
+                    {c.status === 'draft' && <Tag style={{ marginInlineEnd: 0 }}>待渲染</Tag>}
+                    {c.status === 'fail' && <Tag color="error" style={{ marginInlineEnd: 0 }}>失败</Tag>}
+                    <span className="dw-cut-hook" title={c.hookHeadline}>
+                      {c.hookHeadline}
+                    </span>
                   </div>
                 </button>
               ))}
@@ -941,13 +1100,12 @@ function ProjectList(): ReactElement {
   return (
     <div>
       <div className="dw-page-head">
-        <div>
+        <div className="dw-page-head-main">
           <h2 className="dw-page-title">AI 短剧智剪</h2>
           <p className="dw-page-desc">
             导入短剧后全自动分析冲突与人物，产出高转化引流切片与配套文案，拖入剪映即可发布。
           </p>
         </div>
-        <span className="dw-spacer" />
         {dramas.length > 0 && (
           <Input
             allowClear
@@ -986,29 +1144,45 @@ function ProjectList(): ReactElement {
             const totalN = (d.cuts ?? []).length
             const replicaReady = (d.replicas ?? []).filter((r) => r.status === 'ready').length
             const replicaTotal = (d.replicas ?? []).length
+            const totalHl = d.episodes.reduce((s, e) => s + (e.candidates?.length ?? 0), 0)
             return (
               <div className="dw-project-card" key={d.id}>
                 <div className="dw-project-top">
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="dw-project-title">{d.title}</div>
+                    <button
+                      type="button"
+                      className="dw-project-title-btn"
+                      onClick={() => openDrama(d.id)}
+                      title={d.title}
+                    >
+                      {d.title}
+                    </button>
                     <div className="dw-project-dir" title={d.dir}>
                       {d.dir}
                     </div>
                   </div>
-                  {st === 'done' && <Tag color="success">已掌握全剧</Tag>}
-                  {(st === 'run' || st === 'queue') && <Tag color="processing">分析 {d.global?.pct ?? 0}%</Tag>}
-                  {st === 'fail' && <Tag color="error">分析失败</Tag>}
-                  {st === 'idle' && <Tag>待分析</Tag>}
+                  {st === 'done' && <Tag color="success" style={{ marginInlineEnd: 0 }}>已掌握全剧</Tag>}
+                  {(st === 'run' || st === 'queue') && (
+                    <Tag color="processing" style={{ marginInlineEnd: 0 }}>分析 {d.global?.pct ?? 0}%</Tag>
+                  )}
+                  {st === 'fail' && <Tag color="error" style={{ marginInlineEnd: 0 }}>分析失败</Tag>}
+                  {st === 'idle' && <Tag style={{ marginInlineEnd: 0 }}>待分析</Tag>}
                 </div>
 
                 {d.synthesis?.logline && (
-                  <p className="dw-sub" style={{ margin: 0, lineHeight: 1.55 }}>
+                  <p className="dw-sub" style={{ margin: 0, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
                     {d.synthesis.logline}
                   </p>
                 )}
 
                 <div className="dw-project-stats">
                   <span className="dw-mono">{d.episodes.length} 集</span>
+                  {totalHl > 0 && (
+                    <>
+                      <span>·</span>
+                      <span className="dw-mono">高光 {totalHl} 处</span>
+                    </>
+                  )}
                   <span>·</span>
                   <span>
                     引流成片：<b style={{ color: readyN > 0 ? '#60a5fa' : undefined }}>{readyN}</b> / {totalN} 条就绪

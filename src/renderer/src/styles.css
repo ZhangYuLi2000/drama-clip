@@ -6,7 +6,7 @@
   --bg-canvas: #09090b;
   --bg-surface: #111114;
   --bg-elevated: #18181c;
-  --bg-hover: #1f1f25;
+  --bg-hover: #1f1f26;
   --border-hairline: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.16);
   --text-primary: #f4f4f5;
@@ -28,6 +28,7 @@ body,
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'PingFang SC', sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 /* ---------- 工作室主框架 ---------- */
@@ -198,7 +199,8 @@ body {
 .dw-content {
   flex: 1;
   width: 100%;
-  padding: 20px 24px 28px;
+  min-width: 0;
+  padding: 18px 24px 28px;
   container: main-content / inline-size;
   view-transition-name: dw-page;
 }
@@ -208,7 +210,12 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+.dw-page-head-main {
+  flex: 1;
+  min-width: 220px;
 }
 
 .dw-page-title {
@@ -221,10 +228,11 @@ body {
 }
 
 .dw-page-desc {
-  margin: 4px 0 0;
+  margin: 3px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
   text-wrap: pretty;
+  overflow-wrap: anywhere;
 }
 
 .dw-spacer {
@@ -260,8 +268,8 @@ body {
 .dw-auto-textarea,
 textarea.dw-auto-textarea {
   field-sizing: content;
-  min-block-size: 3.2lh;
-  max-block-size: 10lh;
+  min-block-size: 3lh;
+  max-block-size: 8lh;
   resize: vertical;
 }
 
@@ -289,7 +297,7 @@ textarea.dw-auto-textarea {
 /* ---------- 项目卡片画廊 ---------- */
 .dw-project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr));
   gap: 16px;
 }
 
@@ -301,12 +309,14 @@ textarea.dw-auto-textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transition: border-color 0.16s ease, background-color 0.16s ease;
+  min-width: 0;
+  transition: border-color 0.16s ease, background-color 0.16s ease, translate 0.16s ease;
 }
 
 .dw-project-card:hover {
   border-color: var(--border-strong);
   background: var(--bg-elevated);
+  translate: 0 -1px;
 }
 
 .dw-project-top {
@@ -316,11 +326,26 @@ textarea.dw-auto-textarea {
   gap: 12px;
 }
 
-.dw-project-title {
+.dw-project-title-btn {
+  display: block;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.dw-project-title-btn:hover {
+  color: #60a5fa;
 }
 
 .dw-project-dir {
@@ -335,9 +360,11 @@ textarea.dw-auto-textarea {
 .dw-project-stats {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   font-size: 12px;
   color: var(--text-secondary);
+  margin-top: auto;
 }
 
 .dw-project-actions {
@@ -351,9 +378,14 @@ textarea.dw-auto-textarea {
 /* ---------- 三栏 NLE 智剪工作区 ---------- */
 .dw-nle-grid {
   display: grid;
-  grid-template-columns: 272px minmax(340px, 1fr) 360px;
+  grid-template-columns: 268px minmax(0, 1fr) 368px;
   gap: 16px;
   align-items: start;
+}
+
+.dw-nle-grid > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .dw-panel {
@@ -361,27 +393,35 @@ textarea.dw-auto-textarea {
   border: 1px solid var(--border-hairline);
   border-radius: 14px;
   padding: 14px;
+  min-width: 0;
 }
 
 .dw-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 10px;
+  min-width: 0;
 }
 
 .dw-panel-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dw-cut-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 640px;
-  overflow: auto;
+  max-height: calc(100dvh - 230px);
+  min-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
   scrollbar-gutter: stable;
@@ -441,6 +481,9 @@ textarea.dw-auto-textarea {
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dw-cut-item-meta {
@@ -448,9 +491,12 @@ textarea.dw-auto-textarea {
   align-items: center;
   gap: 6px;
   margin-top: 6px;
+  min-width: 0;
 }
 
 .dw-cut-hook {
+  flex: 1;
+  min-width: 0;
   font-size: 11px;
   color: var(--text-muted);
   overflow: hidden;
@@ -460,20 +506,24 @@ textarea.dw-auto-textarea {
 
 /* ---------- 中央监视器与比例时间轴 ---------- */
 .dw-stage {
+  position: sticky;
+  top: 64px;
   background: #050507;
   border: 1px solid var(--border-hairline);
   border-radius: 14px;
-  padding: 16px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .dw-player {
   position: relative;
   width: 100%;
-  max-width: 310px;
+  max-width: min(296px, 32vh);
   aspect-ratio: 9 / 16;
   margin: 0 auto;
   border-radius: 12px;
@@ -506,12 +556,13 @@ textarea.dw-auto-textarea {
   inset-inline-end: 10px;
   font-size: 11px;
   color: #f4f4f5;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(6px);
   padding: 2px 8px;
   border-radius: 6px;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .dw-play-overlay {
@@ -521,8 +572,8 @@ textarea.dw-auto-textarea {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
   color: #fff;
   cursor: pointer;
@@ -530,11 +581,23 @@ textarea.dw-auto-textarea {
   align-items: center;
   justify-content: center;
   font-size: 18px;
-  transition: transform 0.15s ease, background-color 0.15s ease;
+  transition: opacity 0.18s ease, scale 0.15s ease, background-color 0.15s ease;
+}
+
+.dw-play-overlay.is-playing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dw-player:hover .dw-play-overlay.is-playing,
+.dw-play-overlay:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .dw-play-overlay:hover {
-  background: rgba(59, 130, 246, 0.75);
+  background: rgba(59, 130, 246, 0.8);
+  scale: 1.06;
 }
 
 .dw-play-overlay:focus-visible {
@@ -549,32 +612,159 @@ textarea.dw-auto-textarea {
   background: var(--bg-surface);
   border: 1px solid var(--border-hairline);
   border-radius: 10px;
-  padding: 6px 12px;
+  padding: 5px 10px;
+  min-width: 0;
+}
+
+.dw-tl-box {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dw-tl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .dw-tl-strip {
   display: flex;
-  gap: 3px;
-  height: 36px;
-  padding: 4px;
+  gap: 2px;
+  height: 26px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px;
   background: var(--bg-surface);
   border: 1px solid var(--border-hairline);
-  border-radius: 10px;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .dw-tl-seg {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border: none;
+  border-radius: 4px;
+  font-family: inherit;
   font-size: 11px;
   font-weight: 500;
   color: #fff;
-  min-width: 0;
+  min-width: 4px;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 6px;
-  opacity: 0.9;
+  padding: 0 3px;
+  opacity: 0.78;
+  cursor: pointer;
+  transition: opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dw-tl-seg:hover {
+  opacity: 1;
+  filter: brightness(1.12);
+}
+
+.dw-tl-seg.is-now {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1.5px #ffffff;
+}
+
+.dw-tl-seg:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -1px;
+}
+
+/* 播放器下方的当前片段实时解释条：彻底防横向溢出 */
+.dw-tl-active-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.dw-tl-active-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dw-tl-active-why {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.dw-tl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 64px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.dw-tl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.dw-tl-pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.dw-tl-pill.is-now {
+  border-color: rgba(59, 130, 246, 0.55);
+  color: #fff;
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.dw-tl-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
 }
 
 /* 复刻时间轴：段数可达上百，去掉段内 padding、零基准按秒数比例分配宽度；
@@ -600,7 +790,8 @@ textarea.dw-auto-textarea {
 .dw-inspector {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  min-width: 0;
 }
 
 .dw-copy-block {
@@ -608,6 +799,7 @@ textarea.dw-auto-textarea {
   border: 1px solid var(--border-hairline);
   border-radius: 10px;
   padding: 10px 12px;
+  min-width: 0;
 }
 
 .dw-copy-head {
@@ -622,6 +814,7 @@ textarea.dw-auto-textarea {
   font-weight: 600;
   color: #fbbf24;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .dw-reason {
@@ -630,29 +823,53 @@ textarea.dw-auto-textarea {
   line-height: 1.65;
   color: var(--text-primary);
   text-wrap: pretty;
+  overflow-wrap: anywhere;
 }
 
 .dw-lines {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 230px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-gutter: stable;
 }
 
 .dw-clip-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  padding: 7px 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 8px 10px;
   border-radius: 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-hairline);
   font-size: 12px;
-  flex-wrap: wrap;
+  cursor: pointer;
+  min-width: 0;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.dw-clip-row:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.dw-clip-row.is-now {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(59, 130, 246, 0.12);
 }
 
 .dw-clip-order {
   width: 20px;
   height: 20px;
+  margin-top: 1px;
   border-radius: 50%;
   background: rgba(59, 130, 246, 0.18);
   color: #60a5fa;
@@ -664,15 +881,80 @@ textarea.dw-auto-textarea {
   flex: none;
 }
 
+.dw-clip-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dw-clip-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .dw-clip-why {
   color: var(--text-secondary);
-  flex: 1;
-  min-width: 140px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ---------- 模板预设胶囊 ---------- */
+.dw-tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dw-tpl-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.dw-tpl-btn:hover {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.dw-tpl-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.dw-tpl-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+/* ---------- 设置与队列双栏 ---------- */
+.dw-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
 /* ---------- 任务日志 ---------- */
 .dw-log {
-  max-height: 460px;
+  max-height: 480px;
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
@@ -714,9 +996,12 @@ textarea.dw-auto-textarea {
 }
 
 /* ---------- 容器查询与响应式 ---------- */
-@container main-content (max-width: 1160px) {
+@container main-content (max-width: 1180px) {
   .dw-nle-grid {
     grid-template-columns: 240px minmax(300px, 1fr);
+  }
+  .dw-stage {
+    position: static;
   }
   .dw-inspector {
     grid-column: 1 / -1;
@@ -725,6 +1010,9 @@ textarea.dw-auto-textarea {
 
 @container main-content (max-width: 780px) {
   .dw-nle-grid {
+    grid-template-columns: 1fr;
+  }
+  .dw-tpl-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -736,6 +1024,8 @@ textarea.dw-auto-textarea {
     --border-strong: rgba(255, 255, 255, 0.45);
   }
   .dw-cut-list,
+  .dw-lines,
+  .dw-tl-legend,
   .dw-log {
     scrollbar-color: #ffffff #18181c;
   }

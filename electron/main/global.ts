@@ -469,8 +469,14 @@ export async function runGlobalAnalysis(
   const eps = drama.episodes.filter((e) => e.n >= range.from && e.n <= range.to).sort((a, b) => a.n - b.n)
   if (eps.length === 0) throw new Error('范围内没有剧集')
   for (const ep of eps) {
-    if (!ep.duration || ep.duration <= 0) throw new Error(`第 ${ep.n} 集缺少时长，请先等待元数据读取完成`)
     if (!fileExists(ep.file)) throw new Error(`第 ${ep.n} 集文件不存在：${ep.file}`)
+    if (!ep.duration || ep.duration <= 0) {
+      onLog?.(`第 ${ep.n} 集尚未完成元数据探测，正在自动读取时长…`)
+      const info = await probe(ep.file)
+      ep.duration = info.duration
+      ep.width = info.width
+      ep.height = info.height
+    }
   }
   const fullMap = buildMap(eps)
   const totalSec = fullMap[fullMap.length - 1].globalEnd

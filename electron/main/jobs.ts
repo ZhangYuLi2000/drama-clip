@@ -7,7 +7,7 @@ import { allEpisodes, cacheDir, findDrama, findEpisode, getLibrary, saveLibrary 
 import { generatePromoCut, regeneratePromoCut } from './director'
 import { runGlobalAnalysis, type GlobalRange } from './global'
 import { detectShots, fileExists, makeThumb, probe } from './media'
-import { renderPromoCut } from './render'
+import { cleanupCutFiles, renderPromoCut } from './render'
 import { runReplicaTask } from './replica-engine'
 import { getEffectiveTextModel, getSettings } from './settings'
 
@@ -200,7 +200,7 @@ export function stopTasks(dramaId?: string): { cleared: number } {
   for (const d of getLibrary().dramas) {
     if (dramaId && d.id !== dramaId) continue
     if (d.global && (d.global.status === 'queue' || (d.global.status === 'run' && current?.dramaId === d.id))) {
-      d.global.status = d.global.map.length > 0 ? 'done' : 'idle'
+      d.global.status = d.synthesis && d.global.map.length > 0 ? 'done' : 'idle'
       d.global.pct = undefined
       d.global.note = '已手动终止（已完成的分幕已保存，下次可断点续传）'
     }
@@ -344,7 +344,7 @@ async function pump(): Promise<void> {
         if (signal.aborted || msg === '已取消') {
           jobLog('warn', `${label} 已手动终止（已完成的分幕已缓存）`)
           if (drama.global) {
-            drama.global.status = drama.global.map.length > 0 ? 'done' : 'idle'
+            drama.global.status = drama.synthesis && drama.global.map.length > 0 ? 'done' : 'idle'
             drama.global.pct = undefined
             drama.global.note = '已手动终止'
           }
@@ -459,8 +459,8 @@ async function pump(): Promise<void> {
           (msg) => jobLog('info', msg),
           signal
         )
-        if (oldOutput && oldOutput !== output) fs.rmSync(oldOutput, { force: true })
-        if (oldSrt && oldSrt !== srtPath) fs.rmSync(oldSrt, { force: true })
+        if (oldOutput && oldOutput !== output) cleanupCutFiles(oldOutput, oldSrt && oldSrt !== srtPath ? oldSrt : undefined)
+        else if (oldSrt && oldSrt !== srtPath) fs.rmSync(oldSrt, { force: true })
         cut.status = 'ready'
         cut.pct = 100
         cut.output = output

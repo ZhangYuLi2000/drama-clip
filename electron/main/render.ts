@@ -159,3 +159,12 @@ export async function renderPromoCut(
     fs.rmSync(workDir, { recursive: true, force: true })
   }
 }
+
+export function cleanupCutFiles(output?: string, srtPath?: string): void {
+  if (output) {
+    fs.rmSync(output, { force: true })
+    const copyFile = `${output.replace(/\.mp4$/i, '')}_文案.txt`
+    fs.rmSync(copyFile, { force: true })
+  }
+  if (srtPath) fs.rmSync(srtPath, { force: true })
+}

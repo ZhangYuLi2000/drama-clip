@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
-import { Alert, AutoComplete, Button, Card, Form, Input, InputNumber, Select, Space, Switch } from 'antd'
+import { AutoComplete, Button, Form, Input, InputNumber, Select, Space, Switch, Tag } from 'antd'
 import type { ModelCfg, ReplicaSettings } from '../../../shared/types'
 import { useLibrary } from '../library'
 import { toast } from '../store'
@@ -21,14 +21,12 @@ const TEXT_OPTIONS = [
 const EMPTY: ModelCfg = { baseUrl: '', apiKey: '', model: '' }
 
 function ModelFields({
-  title,
   extra,
   value,
   onChange,
   options,
   urlPlaceholder
 }: {
-  title: string
   extra: string
   value: ModelCfg
   onChange: (v: ModelCfg) => void
@@ -37,7 +35,6 @@ function ModelFields({
 }): ReactElement {
   return (
     <>
-      {title && <div className="dw-sec-title">{title}</div>}
       <Form.Item label="Base URL" extra={extra}>
         <Input
           value={value.baseUrl}
@@ -53,7 +50,7 @@ function ModelFields({
           autoComplete="off"
         />
       </Form.Item>
-      <Form.Item label="模型" extra="可自由输入模型名">
+      <Form.Item label="模型名称" extra="可下拉选择或自由输入模型 ID" style={{ marginBottom: 0 }}>
         <AutoComplete
           value={value.model}
           onChange={(v) => onChange({ ...value, model: v })}
@@ -106,61 +103,86 @@ export default function Settings(): ReactElement {
   return (
     <div>
       <div className="dw-page-head">
-        <div>
-          <h2 className="dw-page-title">设置</h2>
-          <p className="dw-page-desc">配置保存在本地（userData/settings.json），所有视频与文案均在本地处理。</p>
+        <div className="dw-page-head-main">
+          <h2 className="dw-page-title">系统设置</h2>
+          <p className="dw-page-desc">配置保存在本地（userData/settings.json），所有视频代理、断点缓存与成片均在本地处理。</p>
         </div>
+        <Button type="primary" loading={saving} onClick={save}>
+          保存全部设置
+        </Button>
       </div>
-      <Card style={{ maxWidth: 720 }}>
-        <Form layout="vertical">
-          <div className="dw-sec-title">全局视频理解模型（主链路）</div>
-          <Space style={{ marginBottom: 8 }}>
-            <Button
-              size="small"
-              onClick={() => setGlobal({ baseUrl: 'http://127.0.0.1:3425/v1', apiKey: 'magpie', model: 'wandapi/gemini-4-hydrogen' })}
-            >
-              预设：magpie 本地
-            </Button>
-            <Button
-              size="small"
-              onClick={() => setGlobal({ baseUrl: 'https://generativelanguage.googleapis.com', apiKey: global.apiKey, model: 'gemini-4-hydrogen' })}
-            >
-              预设：Google 官方免费
-            </Button>
-          </Space>
-          <ModelFields
-            title=""
-            extra="自动分幕压缩整部短剧并识别剧情、人物、高光与句级台词（Google 官方走原生接口，中转走 OpenAI 兼容）。"
-            value={global}
-            onChange={setGlobal}
-            options={GLOBAL_OPTIONS}
-            urlPlaceholder="https://generativelanguage.googleapis.com"
-          />
 
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message="剪辑编排文本模型（可选）"
-            description="用于引流成片编排、定向重剪与文案生成。若下方留空，将自动复用上面的全局模型配置，无需重复填写 Key。"
-          />
-          <ModelFields
-            title=""
-            extra="留空则默认使用全局模型；也可单独配置文本推理更强的模型（如 qwen-max 等）。"
-            value={text}
-            onChange={setText}
-            options={TEXT_OPTIONS}
-            urlPlaceholder="留空则自动复用全局模型"
-          />
+      <Form layout="vertical">
+        <div className="dw-settings-grid">
+          <div className="dw-panel">
+            <div className="dw-panel-head">
+              <span className="dw-panel-title">1. 全局视频理解模型（主链路）</span>
+              <Tag color="blue" style={{ marginInlineEnd: 0 }}>必填</Tag>
+            </div>
+            <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
+              负责一次性通读全剧视频分幕，提取一句话主线、人物关系、高光候选与句级台词。
+            </p>
+            <Space style={{ marginBottom: 12 }}>
+              <Button
+                size="small"
+                onClick={() =>
+                  setGlobal({ baseUrl: 'http://127.0.0.1:3425/v1', apiKey: 'magpie', model: 'wandapi/gemini-4-hydrogen' })
+                }
+              >
+                预设：magpie 本地
+              </Button>
+              <Button
+                size="small"
+                onClick={() =>
+                  setGlobal({
+                    baseUrl: 'https://generativelanguage.googleapis.com',
+                    apiKey: global.apiKey,
+                    model: 'gemini-4-hydrogen'
+                  })
+                }
+              >
+                预设：Google 官方免费
+              </Button>
+            </Space>
+            <ModelFields
+              extra="Google 官方地址自动走原生接口，中转地址走 OpenAI 兼容接口。"
+              value={global}
+              onChange={setGlobal}
+              options={GLOBAL_OPTIONS}
+              urlPlaceholder="https://generativelanguage.googleapis.com"
+            />
+          </div>
 
-          <Button type="primary" loading={saving} onClick={save}>
-            保存设置
-          </Button>
-        </Form>
-      </Card>
+          <div className="dw-panel">
+            <div className="dw-panel-head">
+              <span className="dw-panel-title">2. 剪辑大师编排模型（引流切条与文案）</span>
+              <Tag style={{ marginInlineEnd: 0 }}>可选 · 留空自动复用主模型</Tag>
+            </div>
+            <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
+              负责基于本地全剧缓存秒级编排引流切片、定向重剪与生成剪映花字/发布文案。留空时直接复用左侧全局模型。
+            </p>
+            <Space style={{ marginBottom: 12 }}>
+              <Button size="small" onClick={() => setText(EMPTY)}>
+                清空（直接复用全局模型）
+              </Button>
+            </Space>
+            <ModelFields
+              extra="留空则默认复用全局模型；也可单独配置推理更强的文本模型。"
+              value={text}
+              onChange={setText}
+              options={TEXT_OPTIONS}
+              urlPlaceholder="留空则自动复用全局模型"
+            />
+          </div>
+        </div>
+      </Form>
 
       {replica && (
-        <Card title="爆款复刻引擎（本地溯源，无需模型/API）" style={{ maxWidth: 720, marginTop: 16 }}>
+        <div className="dw-panel" style={{ marginTop: 16 }}>
+          <div className="dw-panel-head">
+            <span className="dw-panel-title">3. 爆款复刻引擎（本地溯源，无需模型/API）</span>
+            <Tag style={{ marginInlineEnd: 0 }}>本地引擎</Tag>
+          </div>
           <Form layout="vertical">
             <Space wrap size={[16, 0]}>
               <Form.Item label="索引抽帧率" extra="越高越准，索引越大越慢">
@@ -225,7 +247,7 @@ export default function Settings(): ReactElement {
               保存复刻设置
             </Button>
           </Form>
-        </Card>
+        </div>
       )}
     </div>
   )
