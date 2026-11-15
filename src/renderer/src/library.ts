@@ -43,7 +43,6 @@ interface LibraryState {
   renderCut: (dramaId: string, cutId: string) => Promise<void>
   deleteCut: (dramaId: string, cutId: string) => Promise<void>
   openOutput: (file: string) => Promise<void>
-  exportCutPackage: (dramaId: string, cutId: string) => Promise<{ canceled: boolean; dir: string }>
   stopTasks: (dramaId?: string) => Promise<{ cleared: number }>
   clearLogs: () => Promise<void>
   loadSettings: () => Promise<void>
@@ -130,8 +129,6 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   openOutput: async (file) => {
     await call<null>('cut:open-output', file)
   },
-  exportCutPackage: (dramaId, cutId) =>
-    call<{ canceled: boolean; dir: string }>('cut:export-package', { dramaId, cutId }),
   stopTasks: async (dramaId) => {
     const r = await call<{ cleared: number }>('job:stop', dramaId)
     await get().refresh()

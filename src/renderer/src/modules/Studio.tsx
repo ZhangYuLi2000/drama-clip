@@ -3,7 +3,6 @@ import type { ReactElement } from 'react'
 import {
   CopyOutlined,
   DeleteOutlined,
-  DownloadOutlined,
   ExperimentOutlined,
   FireOutlined,
   FolderOpenOutlined,
@@ -16,6 +15,7 @@ import {
   ReloadOutlined,
   ScanOutlined,
   ScissorOutlined,
+  SettingOutlined,
   StopOutlined,
   ThunderboltOutlined,
   VideoCameraAddOutlined
@@ -39,18 +39,28 @@ import {
   Tabs,
   Tag
 } from 'antd'
-import type { CutMode, CutStyle, Drama, GlobalScript, PromoCut } from '../../../shared/types'
-import { CUT_STYLES } from '../../../shared/types'
+import type { CutMode, CutStyle, CutStyleConfig, Drama, GlobalScript, PromoCut } from '../../../shared/types'
+import { DEFAULT_CUT_STYLES } from '../../../shared/types'
 import { findDrama, fmtSec, useLibrary } from '../library'
 import { toast, useStore } from '../store'
 import ReviewPlayer from '../ReviewPlayer'
 import type { ReviewSegment, SeekRequest } from '../ReviewPlayer'
 import ReplicaPanel, { NewReplicaModal } from './Replica'
 
-const STYLE_COLOR: Record<CutStyle, string> = {
+const STYLE_COLOR: Record<string, string> = {
+  auto: 'default',
   conflict: 'red',
   reversal: 'gold',
   suspense: 'cyan'
+}
+
+const resolveStyleMeta = (styles: CutStyleConfig[], id?: string): { name: string; color: string } => {
+  if (!id || id === 'auto') return { name: '自由定调', color: 'default' }
+  const found = styles.find((s) => s.id === id) ?? DEFAULT_CUT_STYLES.find((s) => s.id === id)
+  return {
+    name: found?.name ?? id,
+    color: STYLE_COLOR[id] ?? 'blue'
+  }
 }
 
 const ROLE_HEX: Record<string, string> = {
@@ -216,9 +226,11 @@ function GlobalAnalyzeModal({ d, open, onClose }: { d: Drama; open: boolean; onC
 function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: () => void }): ReactElement {
   const generateCut = useLibrary((s) => s.generateCut)
   const pickVideoFile = useLibrary((s) => s.pickVideoFile)
+  const styles = useLibrary((s) => s.settings?.styles ?? DEFAULT_CUT_STYLES)
+  const goto = useStore((s) => s.goto)
 
   const [mode, setMode] = useState<CutMode>('independent')
-  const [style, setStyle] = useState<CutStyle>('conflict')
+  const [style, setStyle] = useState<CutStyle>('auto')
   const [targetSec, setTargetSec] = useState(45)
   const [ratio, setRatio] = useState<'9:16' | '16:9'>('9:16')
   const [count, setCount] = useState(1)
@@ -243,7 +255,7 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
 
   const submit = (): void => {
     if (mode === 'viral-clone' && !refVideoPath && !refCopy.trim() && !prompt.trim()) {
-      toast('在「对标爆款 1:1 复刻」模式下，请选择一条对标参考视频或输入对标爆款文案/母版', 'info')
+      toast('请选择参考视频，或填写参考文案 / 套用下方爆款结构', 'info')
       return
     }
     setBusy(true)
@@ -261,10 +273,10 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
       .then(() => {
         const msg =
           mode === 'hook-matrix'
-            ? `已启动「1 主体 × ${effectiveCount} 钩子」赛马矩阵（主干片段缓存秒级复用）`
+            ? `已开始生成 ${effectiveCount} 条多钩子测试切片`
             : mode === 'viral-clone'
-              ? '已启动对标爆款 Beat Sheet 解构与 1:1 槽位复刻'
-              : `已加入 AI 大师编排队列（共 ${effectiveCount} 条，两阶段因果检索秒级编排）`
+              ? '已开始解析对标爆款并复刻生成'
+              : `已加入智剪队列（共 ${effectiveCount} 条）`
         toast(msg)
         setPrompt('')
         onClose()
@@ -273,73 +285,52 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
       .finally(() => setBusy(false))
   }
 
+  const selectedStyle = styles.find((s) => s.id === style)
+
   return (
     <Modal
-      title="AI 智剪引流成片（因果链聚类 · 赛马矩阵 · 对标爆款复刻）"
+      title="AI 新剪成片"
       open={open}
       onCancel={onClose}
       onOk={submit}
       okText={
         mode === 'hook-matrix'
-          ? `生成 ${Math.max(2, count)} 条钩子赛马矩阵`
+          ? `生成 ${Math.max(2, count)} 条测试`
           : mode === 'viral-clone'
-            ? '解构对标爆款并复刻出片'
-            : `立即生成 ${count} 条成片`
+            ? '开始对标复刻'
+            : `生成 ${count} 条成片`
       }
       cancelText="取消"
       confirmLoading={busy}
-      width={620}
+      width={580}
     >
-      <div className="dw-field-label">智剪算法模式</div>
       <Segmented
         block
         value={mode}
         onChange={(v) => changeMode(v as CutMode)}
         options={[
-          { value: 'independent', label: '多思路独立智剪', icon: <ThunderboltOutlined /> },
-          { value: 'hook-matrix', label: '1主体 × N钩子赛马矩阵', icon: <ExperimentOutlined /> },
-          { value: 'viral-clone', label: '对标爆款 1:1 复刻', icon: <FireOutlined /> }
+          { value: 'independent', label: '标准智剪', icon: <ThunderboltOutlined /> },
+          { value: 'hook-matrix', label: '多钩子测试', icon: <ExperimentOutlined /> },
+          { value: 'viral-clone', label: '对标爆款', icon: <FireOutlined /> }
         ]}
-        style={{ marginBottom: 8 }}
-      />
-      <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
-        {mode === 'independent' &&
-          '自动聚类全剧跨集因果冲突链，通过两阶段漏斗检索锁定同一条矛盾主线，每条方案独立选材编排。'}
-        {mode === 'hook-matrix' &&
-          '买量投流标准赛马：固定 1 套高转化同主线爽点主干，自动搭配 N 个不同切入角度的黄金前 3-6 秒钩子，主干渲染缓存秒级复用。'}
-        {mode === 'viral-clone' &&
-          '上传一条同行跑爆的参考视频（或粘贴爆款文案），AI 自动提取其 Beat Sheet 节拍骨架与情绪极性曲线，并 1:1 映射到本地短剧。'}
-      </p>
-
-      <div className="dw-field-label">叙事基调风格</div>
-      <Segmented
-        block
-        value={style}
-        onChange={(v) => {
-          const s = v as CutStyle
-          setStyle(s)
-          setTargetSec(CUT_STYLES[s].defaultTarget)
-        }}
-        options={(Object.keys(CUT_STYLES) as CutStyle[]).map((k) => ({
-          value: k,
-          label: CUT_STYLES[k].name
-        }))}
         style={{ marginBottom: 6 }}
       />
-      <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
-        {CUT_STYLES[style].desc}
+      <p className="dw-sub" style={{ marginTop: 0, marginBottom: 14 }}>
+        {mode === 'independent' && 'AI 自动挑选高冲突主线，生成独立引流切片。'}
+        {mode === 'hook-matrix' && '同一条主线故事，自动搭配多个不同的前 3 秒开场用于投流测试。'}
+        {mode === 'viral-clone' && '上传参考视频或套用爆款结构，AI 提取节拍后 1:1 复刻到本剧。'}
       </p>
 
       <div className="dw-field-grid is-compact" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
         <div className="dw-field">
-          <span className="dw-field-label">{mode === 'hook-matrix' ? '赛马钩子数' : '生成条数'}</span>
+          <span className="dw-field-label">{mode === 'hook-matrix' ? '开场钩子数' : '生成条数'}</span>
           <div className="dw-field-control">
             <Select
               value={mode === 'hook-matrix' ? Math.max(2, count) : count}
               onChange={setCount}
               options={(mode === 'hook-matrix' ? [2, 3, 4, 5] : [1, 2, 3, 4, 5]).map((v) => ({
                 value: v,
-                label: mode === 'hook-matrix' ? `${v} 个钩子变体` : `连出 ${v} 条`
+                label: mode === 'hook-matrix' ? `${v} 个版本` : `${v} 条`
               }))}
             />
           </div>
@@ -369,57 +360,97 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
         </div>
       </div>
 
-      {mode === 'viral-clone' && (
-        <div className="dw-copy-block" style={{ marginBottom: 12 }}>
-          <div className="dw-field-label">对标爆款参考视频（可选 · 自动抽帧提取 Beat Sheet 节拍并本地缓存）</div>
-          <div className="dw-dir" style={{ marginBottom: 8 }}>
-            <span className="dw-dir-path" title={refVideoPath}>
-              {refVideoPath || '未选择参考视频（可仅靠下方对标文案/母版复刻）'}
-            </span>
-            {refVideoPath && (
-              <Button size="small" type="text" onClick={() => setRefVideoPath('')}>
-                清除
-              </Button>
-            )}
-            <Button size="small" icon={<VideoCameraAddOutlined />} onClick={pickRefVideo}>
-              选择对标视频
-            </Button>
-          </div>
-          <div className="dw-field-label">对标爆款台词 / 结构描述（可选）</div>
-          <Input.TextArea
-            className="dw-auto-textarea"
-            value={refCopy}
-            onChange={(e) => setRefCopy(e.target.value)}
-            placeholder="粘贴外部爆款切片的台词文案或分镜节拍，AI 将提取其情绪曲线与钩子机制并复刻到本剧"
-          />
-        </div>
-      )}
-
-      <div className="dw-field-label">一键套用爆款复刻母版（点击自动填入结构与参数）</div>
-      <div className="dw-tpl-grid">
-        {VIRAL_TEMPLATES.map((tpl) => (
-          <button
-            type="button"
-            key={tpl.title}
-            className="dw-tpl-btn"
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span className="dw-field-label" style={{ marginBottom: 0 }}>
+            叙事风格（可选）
+          </span>
+          <Button
+            size="small"
+            type="link"
+            icon={<SettingOutlined />}
+            style={{ paddingInline: 0, height: 'auto' }}
             onClick={() => {
-              setStyle(tpl.style)
-              setTargetSec(tpl.target)
-              setPrompt(tpl.prompt)
+              onClose()
+              goto('settings')
             }}
           >
-            <span className="dw-tpl-title">{tpl.title}</span>
-            <span className="dw-tpl-desc">{tpl.desc}</span>
-          </button>
-        ))}
+            自定义风格
+          </Button>
+        </div>
+        <Select
+          style={{ width: '100%' }}
+          value={style}
+          onChange={(v) => {
+            setStyle(v)
+            const found = styles.find((s) => s.id === v)
+            if (found && found.defaultTarget >= 0) setTargetSec(found.defaultTarget)
+          }}
+          options={[
+            { value: 'auto', label: 'AI 自动定调（不限定风格）' },
+            ...styles.map((s) => ({ value: s.id, label: s.name }))
+          ]}
+        />
+        {selectedStyle?.desc && (
+          <p className="dw-sub" style={{ marginTop: 4, marginBottom: 0 }}>
+            {selectedStyle.desc}
+          </p>
+        )}
       </div>
 
-      <div className="dw-field-label">补充剪辑 / 主线锁定要求（可选 · 自动预筛未使用的黄金钩子）</div>
+      {mode === 'viral-clone' && (
+        <>
+          <div className="dw-copy-block" style={{ marginBottom: 12 }}>
+            <div className="dw-field-label">参考视频（可选）</div>
+            <div className="dw-dir" style={{ marginBottom: 8 }}>
+              <span className="dw-dir-path" title={refVideoPath}>
+                {refVideoPath || '未选择参考视频（也可仅靠下方文案或母版复刻）'}
+              </span>
+              {refVideoPath && (
+                <Button size="small" type="text" onClick={() => setRefVideoPath('')}>
+                  清除
+                </Button>
+              )}
+              <Button size="small" icon={<VideoCameraAddOutlined />} onClick={pickRefVideo}>
+                选择视频
+              </Button>
+            </div>
+            <div className="dw-field-label">参考台词或结构描述（可选）</div>
+            <Input.TextArea
+              className="dw-auto-textarea"
+              value={refCopy}
+              onChange={(e) => setRefCopy(e.target.value)}
+              placeholder="粘贴对标爆款的台词文案或分镜节奏，AI 将按相同情绪曲线复刻"
+            />
+          </div>
+
+          <div className="dw-field-label">常用爆款结构（可选 · 点击填入）</div>
+          <div className="dw-tpl-grid">
+            {VIRAL_TEMPLATES.map((tpl) => (
+              <button
+                type="button"
+                key={tpl.title}
+                className="dw-tpl-btn"
+                onClick={() => {
+                  setStyle(tpl.style)
+                  setTargetSec(tpl.target)
+                  setPrompt(tpl.prompt)
+                }}
+              >
+                <span className="dw-tpl-title">{tpl.title}</span>
+                <span className="dw-tpl-desc">{tpl.desc}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="dw-field-label">补充要求（可选）</div>
       <Input.TextArea
         className="dw-auto-textarea"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="例如：重点突出女主亮明千金身份打脸反派，把第 6 集的耳光放最前面做钩子"
+        placeholder="例如：重点突出女主亮明身份打脸反派，把第 6 集的耳光放最前面做钩子"
       />
     </Modal>
   )
@@ -512,8 +543,8 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   const renderCut = useLibrary((s) => s.renderCut)
   const deleteCut = useLibrary((s) => s.deleteCut)
   const openOutput = useLibrary((s) => s.openOutput)
-  const exportCutPackage = useLibrary((s) => s.exportCutPackage)
   const stopTasks = useLibrary((s) => s.stopTasks)
+  const styles = useLibrary((s) => s.settings?.styles ?? DEFAULT_CUT_STYLES)
 
   const linesRef = useRef<HTMLDivElement>(null)
   const seekSeqRef = useRef(0)
@@ -522,20 +553,20 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   const [inspectorTab, setInspectorTab] = useState<'craft' | 'clips'>('craft')
 
   const [instruction, setInstruction] = useState('')
-  const [nextStyle, setNextStyle] = useState<CutStyle>(cut.style)
+  const [nextStyle, setNextStyle] = useState<CutStyle>(cut.style || 'auto')
   const [nextTarget, setNextTarget] = useState<number>(cut.targetSec)
   const [regenBusy, setRegenBusy] = useState(false)
-  const [exportBusy, setExportBusy] = useState(false)
 
   useEffect(() => {
     setCurrentIdx(0)
     setSeekRequest(null)
-    setNextStyle(cut.style)
+    setNextStyle(cut.style || 'auto')
     setNextTarget(cut.targetSec)
     setInstruction('')
   }, [cut.id, cut.revision, cut.output])
 
   const playable = cut.status === 'ready' && Boolean(cut.output)
+  const styleMeta = resolveStyleMeta(styles, cut.style)
 
   const copyText = (txt: string, label: string): void => {
     void navigator.clipboard
@@ -554,16 +585,6 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
       })
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '重剪失败', 'info'))
       .finally(() => setRegenBusy(false))
-  }
-
-  const doExport = (): void => {
-    setExportBusy(true)
-    exportCutPackage(d.id, cut.id)
-      .then((res) => {
-        if (!res.canceled) toast('已导出剪映素材包（MP4 + SRT + 文案）')
-      })
-      .catch((e: unknown) => toast(e instanceof Error ? e.message : '导出失败', 'info'))
-      .finally(() => setExportBusy(false))
   }
 
   const { segments, totalSegDur, reviewSegments } = useMemo(() => {
@@ -627,12 +648,12 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
             <span className="dw-panel-title" title={cut.title}>
               {cut.title}
             </span>
-            <Tag color={STYLE_COLOR[cut.style]} style={{ marginInlineEnd: 0 }}>
-              {CUT_STYLES[cut.style].name}
+            <Tag color={styleMeta.color} style={{ marginInlineEnd: 0 }}>
+              {styleMeta.name}
             </Tag>
             {cut.mode === 'hook-matrix' && (
               <Tag color="purple" style={{ marginInlineEnd: 0 }}>
-                赛马矩阵
+                多钩子
               </Tag>
             )}
             {cut.mode === 'viral-clone' && (
@@ -682,26 +703,18 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
         }
       />
 
-      {/* 右侧：精简双标签工作台（导出 + AI重剪与文案 / 分镜明细） */}
+      {/* 右侧：精简双标签工作台（目录 + AI重剪与文案 / 分镜明细） */}
       <aside className="dw-inspector" aria-label="AI 剪辑大师与交付文案">
         <div className="dw-panel" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Button
             type="primary"
             style={{ flex: 1 }}
-            icon={<DownloadOutlined />}
-            disabled={!playable}
-            loading={exportBusy}
-            onClick={doExport}
-          >
-            导出剪映素材包
-          </Button>
-          <Button
             icon={<FolderOpenOutlined />}
             disabled={!playable}
-            title="打开成片目录"
-            aria-label="打开成片目录"
             onClick={() => cut.output && openOutput(cut.output)}
-          />
+          >
+            打开切片目录
+          </Button>
           <Popconfirm
             title="删除这条成片方案？"
             description="将同时删除已渲染的视频与字幕文件"
@@ -757,11 +770,11 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
                     size="small"
                     value={nextStyle}
                     onChange={setNextStyle}
-                    style={{ width: 98 }}
-                    options={(Object.keys(CUT_STYLES) as CutStyle[]).map((k) => ({
-                      value: k,
-                      label: CUT_STYLES[k].name
-                    }))}
+                    style={{ width: 108 }}
+                    options={[
+                      { value: 'auto', label: '自由定调' },
+                      ...styles.map((s) => ({ value: s.id, label: s.name }))
+                    ]}
                   />
                   <Select
                     size="small"
@@ -877,6 +890,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
   const setStudioTab = useStore((s) => s.setStudioTab)
   const rescan = useLibrary((s) => s.rescan)
   const stopTasks = useLibrary((s) => s.stopTasks)
+  const styles = useLibrary((s) => s.settings?.styles ?? DEFAULT_CUT_STYLES)
 
   const [analyzeOpen, setAnalyzeOpen] = useState(false)
   const [newCutOpen, setNewCutOpen] = useState(false)
@@ -1054,43 +1068,46 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
               </span>
             </div>
             <div className="dw-cut-list">
-              {cuts.map((c) => (
-                <button
-                  type="button"
-                  key={c.id}
-                  className={`dw-cut-item${activeCut?.id === c.id ? ' is-active' : ''}`}
-                  onClick={() => selectCut(c.id)}
-                >
-                  <div className="dw-cut-item-top">
-                    <span className="dw-cut-item-title" style={{ marginTop: 0, flex: 1 }} title={c.title}>
-                      {c.title}
-                    </span>
-                    {c.status === 'ready' && <Tag color="success" style={{ marginInlineEnd: 0 }}>可导出</Tag>}
-                    {c.status === 'rendering' && <Tag color="processing" style={{ marginInlineEnd: 0 }}>渲染 {c.pct ?? 0}%</Tag>}
-                    {c.status === 'draft' && <Tag style={{ marginInlineEnd: 0 }}>待渲染</Tag>}
-                    {c.status === 'fail' && <Tag color="error" style={{ marginInlineEnd: 0 }}>失败</Tag>}
-                  </div>
-                  <div className="dw-cut-item-meta">
-                    <Tag color={STYLE_COLOR[c.style]} style={{ marginInlineEnd: 0 }}>
-                      {CUT_STYLES[c.style].name}
-                    </Tag>
-                    {c.mode === 'hook-matrix' && (
-                      <Tag color="purple" style={{ marginInlineEnd: 0 }}>
-                        赛马
+              {cuts.map((c) => {
+                const stMeta = resolveStyleMeta(styles, c.style)
+                return (
+                  <button
+                    type="button"
+                    key={c.id}
+                    className={`dw-cut-item${activeCut?.id === c.id ? ' is-active' : ''}`}
+                    onClick={() => selectCut(c.id)}
+                  >
+                    <div className="dw-cut-item-top">
+                      <span className="dw-cut-item-title" style={{ marginTop: 0, flex: 1 }} title={c.title}>
+                        {c.title}
+                      </span>
+                      {c.status === 'ready' && <Tag color="success" style={{ marginInlineEnd: 0 }}>已就绪</Tag>}
+                      {c.status === 'rendering' && <Tag color="processing" style={{ marginInlineEnd: 0 }}>渲染 {c.pct ?? 0}%</Tag>}
+                      {c.status === 'draft' && <Tag style={{ marginInlineEnd: 0 }}>待渲染</Tag>}
+                      {c.status === 'fail' && <Tag color="error" style={{ marginInlineEnd: 0 }}>失败</Tag>}
+                    </div>
+                    <div className="dw-cut-item-meta">
+                      <Tag color={stMeta.color} style={{ marginInlineEnd: 0 }}>
+                        {stMeta.name}
                       </Tag>
-                    )}
-                    {c.mode === 'viral-clone' && (
-                      <Tag color="volcano" style={{ marginInlineEnd: 0 }}>
-                        复刻
-                      </Tag>
-                    )}
-                    <span className="dw-spacer" />
-                    <span className="dw-sub dw-mono">
-                      v{c.revision} · {c.clips.length}段 · {fmtSec(c.actualSec)}
-                    </span>
-                  </div>
-                </button>
-              ))}
+                      {c.mode === 'hook-matrix' && (
+                        <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                          多钩子
+                        </Tag>
+                      )}
+                      {c.mode === 'viral-clone' && (
+                        <Tag color="volcano" style={{ marginInlineEnd: 0 }}>
+                          复刻
+                        </Tag>
+                      )}
+                      <span className="dw-spacer" />
+                      <span className="dw-sub dw-mono">
+                        v{c.revision} · {c.clips.length}段 · {fmtSec(c.actualSec)}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
             <Button
               block
@@ -1100,7 +1117,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
               disabled={g?.status !== 'done'}
               onClick={() => setNewCutOpen(true)}
             >
-              AI 再剪新思路 / 赛马 / 复刻
+              AI 新剪成片
             </Button>
           </aside>
 

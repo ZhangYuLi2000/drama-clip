@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { AutoComplete, Button, Form, Input, InputNumber, Select, Space, Switch, Tag } from 'antd'
-import type { ModelCfg, ReplicaSettings } from '../../../shared/types'
+import { DEFAULT_CUT_STYLES } from '../../../shared/types'
+import type { CutStyleConfig, ModelCfg, ReplicaSettings } from '../../../shared/types'
 import { useLibrary } from '../library'
 import { toast } from '../store'
 import { CRF_TIP, ParamTip, RADIUS_TIP } from '../paramTips'
@@ -68,20 +70,23 @@ export default function Settings(): ReactElement {
   const [global, setGlobal] = useState<ModelCfg>(EMPTY)
   const [text, setText] = useState<ModelCfg>(EMPTY)
   const [replica, setReplica] = useState<ReplicaSettings | null>(null)
+  const [styles, setStyles] = useState<CutStyleConfig[]>(DEFAULT_CUT_STYLES)
   const [saving, setSaving] = useState(false)
   const [savingReplica, setSavingReplica] = useState(false)
+  const [savingStyles, setSavingStyles] = useState(false)
 
   useEffect(() => {
     if (settings) {
       setGlobal(settings.global)
       setText(settings.text)
       setReplica(settings.replica)
+      setStyles(settings.styles?.length ? settings.styles : DEFAULT_CUT_STYLES)
     }
   }, [settings])
 
   const save = (): void => {
     setSaving(true)
-    saveSettings({ global, text })
+    saveSettings({ global, text, styles })
       .then(() => toast('设置已保存'))
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '保存失败', 'info'))
       .finally(() => setSaving(false))
@@ -94,6 +99,19 @@ export default function Settings(): ReactElement {
       .then(() => toast('溯源重拼引擎设置已保存'))
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '保存失败', 'info'))
       .finally(() => setSavingReplica(false))
+  }
+
+  const saveStyleList = (): void => {
+    const clean = styles.filter((s) => s.name.trim())
+    if (clean.length === 0) {
+      toast('请至少保留一种风格', 'info')
+      return
+    }
+    setSavingStyles(true)
+    saveSettings({ styles: clean })
+      .then(() => toast('叙事基调风格已保存'))
+      .catch((e: unknown) => toast(e instanceof Error ? e.message : '保存失败', 'info'))
+      .finally(() => setSavingStyles(false))
   }
 
   const patchReplica = (p: Partial<ReplicaSettings>): void => {
@@ -298,6 +316,116 @@ export default function Settings(): ReactElement {
           </div>
         </div>
       )}
+
+      <div className="dw-panel" style={{ marginTop: 16 }}>
+        <div className="dw-panel-head">
+          <span className="dw-panel-title">4. 叙事基调风格配置（可选 · 支持自定义）</span>
+          <Space size={8} style={{ flex: 'none' }}>
+            <Button
+              size="small"
+              onClick={() => setStyles(DEFAULT_CUT_STYLES.map((s) => ({ ...s, roles: [...s.roles] })))}
+            >
+              恢复默认
+            </Button>
+            <Button
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() =>
+                setStyles((prev) => [
+                  ...prev,
+                  {
+                    id: `custom-${Date.now().toString(36)}`,
+                    name: '新风格',
+                    desc: '自定义剪辑节奏与叙事侧重点',
+                    defaultTarget: 60,
+                    roles: ['钩子', '冲突', '高潮']
+                  }
+                ])
+              }
+            >
+              新增风格
+            </Button>
+            <Button type="primary" size="small" loading={savingStyles} onClick={saveStyleList}>
+              保存风格
+            </Button>
+          </Space>
+        </div>
+        <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
+          在「AI 新剪成片」中可选择这里的预设风格，或直接选「AI 自动定调」。
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {styles.map((st, idx) => (
+            <div
+              key={st.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '130px 1fr 110px 180px 32px',
+                gap: 8,
+                alignItems: 'center'
+              }}
+            >
+              <Input
+                size="small"
+                value={st.name}
+                placeholder="风格名称"
+                onChange={(e) =>
+                  setStyles((prev) => prev.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))
+                }
+              />
+              <Input
+                size="small"
+                value={st.desc}
+                placeholder="给 AI 的风格与节奏说明"
+                onChange={(e) =>
+                  setStyles((prev) => prev.map((x, i) => (i === idx ? { ...x, desc: e.target.value } : x)))
+                }
+              />
+              <InputNumber
+                size="small"
+                min={0}
+                max={600}
+                addonAfter="秒"
+                value={st.defaultTarget}
+                title="默认目标时长（0 为不限）"
+                onChange={(v) =>
+                  setStyles((prev) =>
+                    prev.map((x, i) => (i === idx ? { ...x, defaultTarget: v ?? 0 } : x))
+                  )
+                }
+              />
+              <Input
+                size="small"
+                value={st.roles.join(' / ')}
+                placeholder="节拍：钩子 / 冲突 / 反转"
+                onChange={(e) =>
+                  setStyles((prev) =>
+                    prev.map((x, i) =>
+                      i === idx
+                        ? {
+                            ...x,
+                            roles: e.target.value
+                              .split(/[/,，→]+/)
+                              .map((r) => r.trim())
+                              .filter(Boolean)
+                          }
+                        : x
+                    )
+                  )
+                }
+              />
+              <Button
+                size="small"
+                type="text"
+                danger
+                disabled={styles.length <= 1}
+                icon={<DeleteOutlined />}
+                aria-label={`删除 ${st.name}`}
+                onClick={() => setStyles((prev) => prev.filter((_, i) => i !== idx))}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

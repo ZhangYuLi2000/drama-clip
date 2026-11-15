@@ -14,11 +14,11 @@ import type {
   PromoCut,
   ViralBeat
 } from '../../src/shared/types'
-import { CUT_STYLES } from '../../src/shared/types'
 import { cacheDir } from './db'
 import { readGlobalScript } from './global'
 import { extractJson, isGoogleNative, streamChat, streamNative, type StreamResult } from './llm'
 import { ffmpegBin, fileExists, run } from './media'
+import { getCutStyleMeta } from './settings'
 
 // 推理模型的思考 token 与正文共享输出预算：16384 会被长思考耗尽（正文 0 token 被截断），
 // 与全局分析路径对齐到 65536；仍耗尽时自动降推理强度重试。
@@ -558,9 +558,10 @@ function parseCutPayload(
 
   const actualSec = Math.round(mergedClips.reduce((s, c) => s + (c.out - c.in), 0) * 10) / 10
   const now = Date.now()
+  const styleName = getCutStyleMeta(style)?.name ?? 'AI智剪'
   return {
     id: existing?.id ?? `cut-${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    title: String(raw.title ?? `${drama.title} · ${CUT_STYLES[style].name}`).slice(0, 40),
+    title: String(raw.title ?? `${drama.title} · ${styleName}`).slice(0, 40),
     style,
     mode: mode ?? existing?.mode ?? 'independent',
     beats: beats && beats.length > 0 ? beats : existing?.beats,
@@ -591,7 +592,7 @@ export async function generatePromoCut(
 ): Promise<{ cut: PromoCut; tokens: number }> {
   const existingCuts = drama.cuts ?? []
   const evidence = buildTwoStageEvidenceDigest(drama, existingCuts, variantIndex)
-  const meta = CUT_STYLES[params.style]
+  const meta = getCutStyleMeta(params.style)
   const usedHooks =
     existingCuts.length > 0
       ? `\n=== 已有切片方案（请务必避开以下已用过的开场钩子与完全雷同的选段组合，寻找新的冲突切入点）===\n` +
@@ -633,11 +634,11 @@ export async function generatePromoCut(
   const userPrompt = `${evidence}${usedHooks}${beatBlock}
 
 === 本次剪辑任务 ===
-剪辑模式：${params.mode === 'viral-clone' ? '【对标爆款 1:1 节拍复刻】' : `【${meta.name}】${meta.desc}`}
+剪辑模式：${params.mode === 'viral-clone' ? '【对标爆款 1:1 节拍复刻】' : meta ? `【${meta.name}】${meta.desc}` : '【自由定调】由你根据剧集内容与用户要求自主选择最合适的叙事基调与节奏'}
 推荐叙事角色序列：${
     viralBenchmark && viralBenchmark.beats.length > 0
       ? viralBenchmark.beats.map((b) => b.role).join(' → ')
-      : meta.roles.join(' → ')
+      : meta ? meta.roles.join(' → ') : '由 AI 根据剧情自由编排'
   }
 目标成片总时长：${durationRule(params.targetSec)}，画幅：${params.ratio}${batchHint}
 ${params.prompt ? `用户爆款复刻/额外要求：${params.prompt}` : ''}
@@ -691,13 +692,13 @@ export async function generateHookMatrixCuts(
 ): Promise<{ cuts: PromoCut[]; tokens: number }> {
   const existingCuts = drama.cuts ?? []
   const evidence = buildTwoStageEvidenceDigest(drama, existingCuts, 1)
-  const meta = CUT_STYLES[params.style]
+  const meta = getCutStyleMeta(params.style)
   const n = Math.max(2, Math.min(6, hookCount))
 
   const userPrompt = `${evidence}
 
 === 本次剪辑任务：「1 主体 × ${n} 钩子」黄金前 3 秒投流赛马矩阵 ===
-剪辑风格：【${meta.name}】${meta.desc}
+剪辑风格：${meta ? `【${meta.name}】${meta.desc}` : '【自由定调】由你根据剧集最强冲突主线自主定调'}
 目标单条总时长：${params.targetSec <= 0 ? '不限固定时长（其中开场钩子 4-7 秒，共享主干部分按剧情完整度自由编排）' : `约 ${params.targetSec} 秒（其中开场钩子 4-7 秒，共享主干部分约 ${Math.max(20, params.targetSec - 6)} 秒）`}，画幅：${params.ratio}
 ${params.prompt ? `用户额外要求：${params.prompt}` : ''}
 
@@ -762,7 +763,7 @@ ${params.prompt ? `用户额外要求：${params.prompt}` : ''}
     const now = Date.now() + i
     cuts.push({
       id: `cut-${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      title: String(h.title ?? `钩子赛马 #${i + 1} · ${CUT_STYLES[params.style].name}`).slice(0, 40),
+      title: String(h.title ?? `钩子赛马 #${i + 1} · ${meta?.name ?? 'AI智剪'}`).slice(0, 40),
       style: params.style,
       mode: 'hook-matrix',
       matrixGroupId,
@@ -798,7 +799,7 @@ export async function regeneratePromoCut(
   const evidence = buildTwoStageEvidenceDigest(drama, drama.cuts ?? [], 1)
   const style = nextStyle ?? existing.style
   const targetSec = nextTargetSec ?? existing.targetSec
-  const meta = CUT_STYLES[style]
+  const meta = getCutStyleMeta(style)
 
   const prevClips = existing.clips
     .map((c, i) => `${i + 1}. 第${c.epN}集 ${c.in.toFixed(1)}-${c.out.toFixed(1)}s [${c.role}] ${c.why}`)
@@ -815,7 +816,7 @@ export async function regeneratePromoCut(
 
 === 当前待重剪的切片方案（v${existing.revision}）===
 方案名称：${existing.title}
-风格：${meta.name}（${meta.desc}）
+风格：${meta ? `${meta.name}（${meta.desc}）` : '自由定调（由 AI 根据修改指令决定）'}
 目标时长：${targetSec <= 0 ? '不限固定时长（按剧情完整度与用户指令自由决定总时长与片段数量）' : targetSec > 90 ? `约 ${targetSec} 秒（中长篇串联，按需选取足够多关键片段）` : `约 ${targetSec} 秒`}
 当前开场花字：${existing.hookHeadline}
 当前片段编排：

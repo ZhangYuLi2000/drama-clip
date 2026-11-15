@@ -19,7 +19,6 @@ const INVOKE_CHANNELS = [
   'cut:render',
   'cut:delete',
   'cut:open-output',
-  'cut:export-package',
   'job:stop',
   'select-reference-video',
   'select-video-file',

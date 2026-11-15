@@ -2,14 +2,13 @@ import { BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import type { CutStyle, GenerateCutParams, JobInfo, JobKind, JobLogEntry, JobLogState } from '../../src/shared/types'
-import { CUT_STYLES } from '../../src/shared/types'
 import { allEpisodes, cacheDir, findDrama, findEpisode, getLibrary, saveLibrary } from './db'
 import { analyzeViralBenchmark, generateHookMatrixCuts, generatePromoCut, regeneratePromoCut } from './director'
 import { runGlobalAnalysis, type GlobalRange } from './global'
 import { detectShots, fileExists, makeThumb, probe } from './media'
 import { cleanupCutFiles, renderPromoCut } from './render'
 import { runReplicaTask } from './replica-engine'
-import { getEffectiveTextModel, getSettings } from './settings'
+import { getCutStyleMeta, getEffectiveTextModel, getSettings } from './settings'
 
 interface Job {
   kind: JobKind
@@ -139,8 +138,9 @@ export function enqueueGenerateCut(dramaId: string, params: GenerateCutParams): 
       totalVariants: total
     })
   }
+  const styleName = getCutStyleMeta(params.style)?.name ?? '自由定调'
   const modeLabel =
-    mode === 'viral-clone' ? '对标爆款 1:1 节拍复刻' : `「${CUT_STYLES[params.style].name}」切片`
+    mode === 'viral-clone' ? '对标爆款 1:1 节拍复刻' : `「${styleName}」切片`
   jobLog('info', `加入队列：AI 大师编排${modeLabel} × ${total} 条（复用全剧缓存与两阶段因果检索）`)
   void pump()
   return true

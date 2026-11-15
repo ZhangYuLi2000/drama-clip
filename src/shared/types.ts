@@ -39,9 +39,15 @@ export interface AiSettings {
   global: ModelCfg
   text: ModelCfg
   replica: ReplicaSettings
+  styles: CutStyleConfig[]
 }
 
-export type AiSettingsPatch = { global?: Partial<ModelCfg>; text?: Partial<ModelCfg>; replica?: Partial<ReplicaSettings> }
+export type AiSettingsPatch = {
+  global?: Partial<ModelCfg>
+  text?: Partial<ModelCfg>
+  replica?: Partial<ReplicaSettings>
+  styles?: CutStyleConfig[]
+}
 
 export interface Episode {
   id: string
@@ -113,7 +119,7 @@ export interface DramaGlobal {
   updatedAt: number
 }
 
-export type CutStyle = 'conflict' | 'reversal' | 'suspense'
+export type CutStyle = string
 export type CutMode = 'independent' | 'hook-matrix' | 'viral-clone'
 
 export interface CutStyleMeta {
@@ -123,26 +129,37 @@ export interface CutStyleMeta {
   roles: string[]
 }
 
-export const CUT_STYLES: Record<CutStyle, CutStyleMeta> = {
-  conflict: {
+export interface CutStyleConfig extends CutStyleMeta {
+  id: string
+}
+
+export const DEFAULT_CUT_STYLES: CutStyleConfig[] = [
+  {
+    id: 'conflict',
     name: '冲突爆破',
     desc: '0-3 秒最强欺辱/冲突直接开场，紧接反击爽点，节奏极快',
     defaultTarget: 45,
     roles: ['钩子', '冲突', '反击']
   },
-  reversal: {
+  {
+    id: 'reversal',
     name: '递进反转',
     desc: '立住委屈与赌注 → 反派步步紧逼 → 亮出底牌逆转打脸',
     defaultTarget: 60,
     roles: ['钩子', '铺垫', '升级', '反转']
   },
-  suspense: {
+  {
+    id: 'suspense',
     name: '悬念卡点',
     desc: '冲突层层加码，在身份揭晓或关键动作即将落地时戛然而止',
     defaultTarget: 75,
     roles: ['钩子', '升级', '高潮', '悬念']
   }
-}
+]
+
+export const CUT_STYLES: Record<string, CutStyleMeta> = Object.fromEntries(
+  DEFAULT_CUT_STYLES.map((s) => [s.id, { name: s.name, desc: s.desc, defaultTarget: s.defaultTarget, roles: s.roles }])
+)
 
 export interface ViralBeat {
   role: string

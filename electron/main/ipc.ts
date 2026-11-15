@@ -6,6 +6,7 @@ import type {
   ApiResult,
   CreateReplicaParams,
   CutStyle,
+  CutStyleConfig,
   Drama,
   Episode,
   GenerateCutParams,
@@ -379,45 +380,6 @@ export function registerIpc(): void {
     return ok(null)
   })
 
-  ipcMain.handle('cut:export-package', async (_e, payload: unknown) => {
-    const { dramaId, cutId } = (payload ?? {}) as { dramaId?: string; cutId?: string }
-    if (typeof dramaId !== 'string' || typeof cutId !== 'string') return fail('参数错误')
-    const drama = findDrama(dramaId)
-    const cut = drama?.cuts?.find((c) => c.id === cutId)
-    if (!drama || !cut || !cut.output || !fileExists(cut.output)) {
-      return fail('成片文件尚未生成')
-    }
-    const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-    const picked = await dialog.showOpenDialog(parent, {
-      title: '选择导出到剪映素材文件夹',
-      properties: ['openDirectory', 'createDirectory']
-    })
-    if (picked.canceled || picked.filePaths.length === 0) return ok({ canceled: true, dir: '' })
-
-    const safeTitle = cut.title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 32) || '智剪成片'
-    const destDir = path.join(picked.filePaths[0], `${safeTitle}_v${cut.revision}`)
-    fs.mkdirSync(destDir, { recursive: true })
-
-    const mp4Name = `${safeTitle}_v${cut.revision}.mp4`
-    fs.copyFileSync(cut.output, path.join(destDir, mp4Name))
-    if (cut.srtPath && fileExists(cut.srtPath)) {
-      fs.copyFileSync(cut.srtPath, path.join(destDir, `${safeTitle}_v${cut.revision}.srt`))
-    }
-    const copyTxt = [
-      `【方案名称】${cut.title} (v${cut.revision})`,
-      `【开场花字标题】${cut.hookHeadline}`,
-      `【引流发布文案】\n${cut.publishCopy}`,
-      `【核心冲突】${cut.conflictSummary}`,
-      `【剪辑师备注】${cut.directorNote}`,
-      '',
-      '【片段时间线】',
-      ...cut.clips.map((c, i) => `${i + 1}. 第${c.epN}集 ${c.in.toFixed(1)}-${c.out.toFixed(1)}s [${c.role}] ${c.why}`)
-    ].join('\n')
-    fs.writeFileSync(path.join(destDir, '剪映花字与发布文案.txt'), copyTxt, 'utf8')
-    shell.openPath(destDir)
-    return ok({ canceled: false, dir: destDir })
-  })
-
   ipcMain.handle('job:stop', (_e, dramaId?: unknown) => {
     return ok(stopTasks(typeof dramaId === 'string' && dramaId ? dramaId : undefined))
   })
@@ -555,6 +517,7 @@ export function registerIpc(): void {
     const t = cleanCfg(p.text)
     if (g) clean.global = g
     if (t) clean.text = t
+    if (Array.isArray(p.styles)) clean.styles = p.styles as CutStyleConfig[]
     if (p.replica) {
       const r = p.replica
       const out: Partial<ReplicaSettings> = {}
