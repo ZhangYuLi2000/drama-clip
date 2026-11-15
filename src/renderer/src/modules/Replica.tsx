@@ -61,6 +61,7 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
   const selectVideoFile = useLibrary((s) => s.selectVideoFile)
   const settings = useLibrary((s) => s.settings)
   const selectReplica = useStore((s) => s.selectReplica)
+  const selectCut = useStore((s) => s.selectCut)
   const rs = settings?.replica
 
   const [clipFile, setClipFile] = useState('')
@@ -126,6 +127,7 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
     createReplica(d.id, params)
       .then((r) => {
         toast('已加入原片溯源重拼队列（无需全局分析，直接用原剧集重拼）')
+        selectCut(null)
         selectReplica(r.replicaId)
         setClipFile('')
         setTitle('')
@@ -267,7 +269,7 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
 
 // ---------------------------------------------------------------- 工作区
 
-function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactElement {
+export function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactElement {
   const retryReplica = useLibrary((s) => s.retryReplica)
   const recutReplica = useLibrary((s) => s.recutReplica)
   const deleteReplica = useLibrary((s) => s.deleteReplica)
@@ -373,7 +375,6 @@ function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): ReactEl
         segments={reviewSegments}
         duration={timelineTotal}
         seekRequest={seekRequest}
-        enableSubtitlePreview={false}
         ariaLabel="溯源重拼监视器"
         timelineTitle={hasEdlTimeline ? '溯源重拼时间轴' : view === 'clip' ? '原参考切片时间轴' : '重拼成片时间轴'}
         timelineHint={hasEdlTimeline ? `共 ${edl.length} 段 · 蓝=连续 / 紫=静帧 / 灰=无出处` : undefined}

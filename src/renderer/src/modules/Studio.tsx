@@ -45,7 +45,7 @@ import { findDrama, fmtSec, useLibrary } from '../library'
 import { toast, useStore } from '../store'
 import ReviewPlayer from '../ReviewPlayer'
 import type { ReviewSegment, SeekRequest } from '../ReviewPlayer'
-import ReplicaPanel, { NewReplicaModal } from './Replica'
+import { NewReplicaModal, ReplicaWorkspace } from './Replica'
 
 const STYLE_COLOR: Record<string, string> = {
   auto: 'default',
@@ -882,12 +882,21 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   )
 }
 
+const REPLICA_STATUS_LABEL = {
+  queue: '排队中',
+  indexing: '建索引',
+  tracing: '溯源中',
+  cutting: '重剪中',
+  ready: '已就绪',
+  fail: '失败'
+} as const
+
 function DramaStudio({ d }: { d: Drama }): ReactElement {
   const backToProjects = useStore((s) => s.backToProjects)
   const selectedCutId = useStore((s) => s.selectedCutId)
   const selectCut = useStore((s) => s.selectCut)
-  const studioTab = useStore((s) => s.studioTab)
-  const setStudioTab = useStore((s) => s.setStudioTab)
+  const selectedReplicaId = useStore((s) => s.selectedReplicaId)
+  const selectReplica = useStore((s) => s.selectReplica)
   const rescan = useLibrary((s) => s.rescan)
   const stopTasks = useLibrary((s) => s.stopTasks)
   const styles = useLibrary((s) => s.settings?.styles ?? DEFAULT_CUT_STYLES)
@@ -900,8 +909,28 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
 
   const cuts = d.cuts ?? []
   const replicas = d.replicas ?? []
-  const activeCut = cuts.find((c) => c.id === selectedCutId) ?? cuts[0] ?? null
   const g = d.global
+
+  const schemeItems = useMemo(() => {
+    const list = [
+      ...cuts.map((c) => ({ kind: 'cut' as const, id: c.id, createdAt: c.createdAt, cut: c })),
+      ...replicas.map((r) => ({ kind: 'replica' as const, id: r.id, createdAt: r.createdAt, replica: r }))
+    ]
+    list.sort((a, b) => b.createdAt - a.createdAt)
+    return list
+  }, [cuts, replicas])
+
+  const activeReplica =
+    (selectedReplicaId ? replicas.find((r) => r.id === selectedReplicaId) : undefined) ??
+    (!selectedCutId && schemeItems[0]?.kind === 'replica' ? schemeItems[0].replica : null)
+  const activeCut =
+    !activeReplica
+      ? (selectedCutId ? cuts.find((c) => c.id === selectedCutId) : undefined) ??
+        (schemeItems[0]?.kind === 'cut' ? schemeItems[0].cut : cuts[0] ?? null)
+      : null
+
+  const readyCount =
+    cuts.filter((c) => c.status === 'ready').length + replicas.filter((r) => r.status === 'ready').length
 
   const doRescan = (): void => {
     setRescanning(true)
@@ -930,15 +959,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
         </div>
 
         <div className="dw-studio-head-right">
-          <Segmented
-            value={studioTab}
-            onChange={(v) => setStudioTab(v as 'cuts' | 'replica')}
-            options={[
-              { value: 'cuts', label: `AI 智剪${cuts.length > 0 ? ` (${cuts.length})` : ''}` },
-              { value: 'replica', label: `溯源重拼${replicas.length > 0 ? ` (${replicas.length})` : ''}` }
-            ]}
-          />
-          <Space size={6}>
+          <Space size={6} wrap>
             <Button
               icon={<ScanOutlined />}
               loading={rescanning}
@@ -960,33 +981,20 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
             >
               {g?.status === 'done' ? '重分析' : '全局分析'}
             </Button>
-            {studioTab === 'cuts' ? (
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                disabled={g?.status !== 'done'}
-                onClick={() => setNewCutOpen(true)}
-              >
-                AI 新剪成片
-              </Button>
-            ) : (
-              <Button type="primary" icon={<ImportOutlined />} onClick={() => setReplicaOpen(true)}>
-                导入参考切片
-              </Button>
-            )}
+            <Button icon={<ImportOutlined />} onClick={() => setReplicaOpen(true)}>
+              导入参考切片
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              disabled={g?.status !== 'done'}
+              onClick={() => setNewCutOpen(true)}
+            >
+              AI 新剪成片
+            </Button>
           </Space>
         </div>
       </div>
-
-      {studioTab === 'replica' && (
-        <>
-          <ReplicaPanel d={d} onImport={() => setReplicaOpen(true)} />
-          <NewReplicaModal d={d} open={replicaOpen} onClose={() => setReplicaOpen(false)} />
-        </>
-      )}
-
-      {studioTab === 'cuts' && (
-        <>
 
       {(g?.status === 'run' || g?.status === 'queue') && (
         <Alert
@@ -1032,30 +1040,35 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
         />
       )}
 
-      {cuts.length === 0 ? (
+      {schemeItems.length === 0 ? (
         <div className="dw-panel" style={{ padding: '48px 20px', textAlign: 'center' }}>
           <Empty
             image={<ScissorOutlined style={{ fontSize: 42, color: 'var(--text-muted)' }} />}
             description={
               g?.status === 'done'
-                ? '全剧已分析完成，立即让 AI 剪辑大师生成引流成片'
-                : '尚未生成引流成片，点击下方按钮一键分析全剧并自动出片'
+                ? '全剧已分析完成，可立即生成 AI 智剪成片或导入参考切片溯源重拼'
+                : '尚未生成成片方案，点击下方按钮一键分析全剧并自动出片'
             }
           >
-            {g?.status === 'done' ? (
-              <Button type="primary" icon={<ThunderboltOutlined />} onClick={() => setNewCutOpen(true)}>
-                AI 智剪第一批成片
+            <Space>
+              {g?.status === 'done' ? (
+                <Button type="primary" icon={<ThunderboltOutlined />} onClick={() => setNewCutOpen(true)}>
+                  AI 智剪第一批成片
+                </Button>
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<ThunderboltOutlined />}
+                  loading={g?.status === 'run' || g?.status === 'queue'}
+                  onClick={() => setAnalyzeOpen(true)}
+                >
+                  一键 AI 全局分析并出片
+                </Button>
+              )}
+              <Button icon={<ImportOutlined />} onClick={() => setReplicaOpen(true)}>
+                导入参考切片（溯源重拼）
               </Button>
-            ) : (
-              <Button
-                type="primary"
-                icon={<ThunderboltOutlined />}
-                loading={g?.status === 'run' || g?.status === 'queue'}
-                onClick={() => setAnalyzeOpen(true)}
-              >
-                一键 AI 全局分析并出片
-              </Button>
-            )}
+            </Space>
           </Empty>
         </div>
       ) : (
@@ -1064,72 +1077,104 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
             <div className="dw-panel-head">
               <span className="dw-panel-title">成片方案</span>
               <span className="dw-sub dw-mono">
-                {cuts.filter((c) => c.status === 'ready').length}/{cuts.length} 就绪
+                {readyCount}/{schemeItems.length} 就绪
               </span>
             </div>
             <div className="dw-cut-list">
-              {cuts.map((c) => {
-                const stMeta = resolveStyleMeta(styles, c.style)
+              {schemeItems.map((item) => {
+                if (item.kind === 'cut') {
+                  const c = item.cut
+                  const stMeta = resolveStyleMeta(styles, c.style)
+                  const isActive = activeCut?.id === c.id
+                  return (
+                    <button
+                      type="button"
+                      key={c.id}
+                      className={`dw-cut-item${isActive ? ' is-active' : ''}`}
+                      onClick={() => {
+                        selectReplica(null)
+                        selectCut(c.id)
+                      }}
+                    >
+                      <div className="dw-cut-item-top">
+                        <span className="dw-cut-item-title" style={{ marginTop: 0, flex: 1 }} title={c.title}>
+                          {c.title}
+                        </span>
+                        {c.status === 'ready' && <Tag color="success" style={{ marginInlineEnd: 0 }}>已就绪</Tag>}
+                        {c.status === 'rendering' && <Tag color="processing" style={{ marginInlineEnd: 0 }}>渲染 {c.pct ?? 0}%</Tag>}
+                        {c.status === 'draft' && <Tag style={{ marginInlineEnd: 0 }}>待渲染</Tag>}
+                        {c.status === 'fail' && <Tag color="error" style={{ marginInlineEnd: 0 }}>失败</Tag>}
+                      </div>
+                      <div className="dw-cut-item-meta">
+                        <Tag color={stMeta.color} style={{ marginInlineEnd: 0 }}>
+                          {stMeta.name}
+                        </Tag>
+                        {c.mode === 'hook-matrix' && (
+                          <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                            多钩子
+                          </Tag>
+                        )}
+                        {c.mode === 'viral-clone' && (
+                          <Tag color="volcano" style={{ marginInlineEnd: 0 }}>
+                            复刻
+                          </Tag>
+                        )}
+                        <span className="dw-spacer" />
+                        <span className="dw-sub dw-mono">
+                          v{c.revision} · {c.clips.length}段 · {fmtSec(c.actualSec)}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                }
+
+                const r = item.replica
+                const isActive = activeReplica?.id === r.id
+                const running = r.status !== 'ready' && r.status !== 'fail' && r.status !== 'queue'
                 return (
                   <button
                     type="button"
-                    key={c.id}
-                    className={`dw-cut-item${activeCut?.id === c.id ? ' is-active' : ''}`}
-                    onClick={() => selectCut(c.id)}
+                    key={r.id}
+                    className={`dw-cut-item${isActive ? ' is-active' : ''}`}
+                    onClick={() => {
+                      selectCut(null)
+                      selectReplica(r.id)
+                    }}
                   >
                     <div className="dw-cut-item-top">
-                      <span className="dw-cut-item-title" style={{ marginTop: 0, flex: 1 }} title={c.title}>
-                        {c.title}
+                      <span className="dw-cut-item-title" style={{ marginTop: 0, flex: 1 }} title={r.clipTitle}>
+                        {r.clipTitle}
                       </span>
-                      {c.status === 'ready' && <Tag color="success" style={{ marginInlineEnd: 0 }}>已就绪</Tag>}
-                      {c.status === 'rendering' && <Tag color="processing" style={{ marginInlineEnd: 0 }}>渲染 {c.pct ?? 0}%</Tag>}
-                      {c.status === 'draft' && <Tag style={{ marginInlineEnd: 0 }}>待渲染</Tag>}
-                      {c.status === 'fail' && <Tag color="error" style={{ marginInlineEnd: 0 }}>失败</Tag>}
+                      <Tag
+                        color={r.status === 'ready' ? 'success' : r.status === 'fail' ? 'error' : r.status === 'queue' ? 'default' : 'processing'}
+                        style={{ marginInlineEnd: 0 }}
+                      >
+                        {REPLICA_STATUS_LABEL[r.status]}
+                        {running ? ` ${r.pct}%` : ''}
+                      </Tag>
                     </div>
                     <div className="dw-cut-item-meta">
-                      <Tag color={stMeta.color} style={{ marginInlineEnd: 0 }}>
-                        {stMeta.name}
+                      <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                        溯源重拼
                       </Tag>
-                      {c.mode === 'hook-matrix' && (
-                        <Tag color="purple" style={{ marginInlineEnd: 0 }}>
-                          多钩子
-                        </Tag>
-                      )}
-                      {c.mode === 'viral-clone' && (
-                        <Tag color="volcano" style={{ marginInlineEnd: 0 }}>
-                          复刻
-                        </Tag>
-                      )}
                       <span className="dw-spacer" />
                       <span className="dw-sub dw-mono">
-                        v{c.revision} · {c.clips.length}段 · {fmtSec(c.actualSec)}
+                        {r.stats ? `${r.stats.segments}段 · ${fmtSec(r.stats.totalSeconds)}` : (r.stageNote ?? '')}
                       </span>
                     </div>
                   </button>
                 )
               })}
             </div>
-            <Button
-              block
-              type="dashed"
-              icon={<PlusOutlined />}
-              style={{ marginTop: 10 }}
-              disabled={g?.status !== 'done'}
-              onClick={() => setNewCutOpen(true)}
-            >
-              AI 新剪成片
-            </Button>
           </aside>
 
-          {activeCut && <CutWorkspace d={d} cut={activeCut} />}
+          {activeReplica ? <ReplicaWorkspace d={d} task={activeReplica} /> : activeCut ? <CutWorkspace d={d} cut={activeCut} /> : null}
         </div>
-      )}
-
-        </>
       )}
 
       <GlobalAnalyzeModal d={d} open={analyzeOpen} onClose={() => setAnalyzeOpen(false)} />
       <NewCutModal d={d} open={newCutOpen} onClose={() => setNewCutOpen(false)} />
+      <NewReplicaModal d={d} open={replicaOpen} onClose={() => setReplicaOpen(false)} />
       <GlobalScriptDrawer d={d} open={scriptOpen} onClose={() => setScriptOpen(false)} />
     </div>
   )
@@ -1140,7 +1185,6 @@ function ProjectList(): ReactElement {
   const autoAnalyze = useLibrary((s) => s.autoAnalyze)
   const removeDrama = useLibrary((s) => s.removeDrama)
   const openDrama = useStore((s) => s.openDrama)
-  const openReplicaTab = useStore((s) => s.openReplicaTab)
   const setImportOpen = useStore((s) => s.setImportOpen)
   const q = useStore((s) => s.q)
   const setQ = useStore((s) => s.setQ)
@@ -1250,9 +1294,6 @@ function ProjectList(): ReactElement {
                 <div className="dw-project-actions">
                   <Button type="primary" style={{ flex: 1 }} onClick={() => openDrama(d.id)}>
                     进入成片室
-                  </Button>
-                  <Button icon={<ImportOutlined />} onClick={() => openReplicaTab(d.id)}>
-                    溯源重拼
                   </Button>
                   {st !== 'done' && (
                     <Button

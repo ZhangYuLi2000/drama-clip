@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
 import {
-  BorderOutlined,
   CaretRightOutlined,
-  CommentOutlined,
-  FullscreenExitOutlined,
-  FullscreenOutlined,
   MutedOutlined,
   PauseOutlined,
   RetweetOutlined,
@@ -45,7 +41,7 @@ interface ReviewPlayerProps {
   ratio?: '9:16' | '16:9'
   /** 切换方案/版本时重置播放状态 */
   resetKey: string
-  /** 结构分段（用于时间轴、段落跳转、单段循环与字幕预览） */
+  /** 结构分段（用于时间轴、段落跳转与单段循环） */
   segments: ReviewSegment[]
   /** 兜底总时长（秒） */
   duration?: number
@@ -65,10 +61,6 @@ interface ReviewPlayerProps {
   timelineHint?: string
   /** 读屏标签 */
   ariaLabel?: string
-  /** 是否启用 9:16 安全区按钮 */
-  enableSafeZone?: boolean
-  /** 是否启用台词字幕预览按钮 */
-  enableSubtitlePreview?: boolean
 }
 
 const SPEEDS = [1, 1.25, 1.5, 2, 0.75]
@@ -76,10 +68,10 @@ const DARK_TEXT_ROLES = new Set(['钩子', '铺垫', '反转', '连续', '静帧
 const roleTagColor = (label: string): string => (DARK_TEXT_ROLES.has(label) ? '#fff' : '#0f172a')
 
 /**
- * CapCut 风格专业审查播放器（仅做播放与审查定位，无剪辑操作）：
- * - 沉浸式暗场监视器 + 角色光晕 + 悬浮节拍角标 + 平台安全区参考 + 台词预览开关 + 全屏审查
- * - 三段式精密播控条（时间码 / 段落跳转与单段循环 / 倍速、音量滑块、辅助开关）
- * - 集成 CapCut 风格磁吸刻度时间轴与当前段落解释条
+ * 审查播放器（仅做播放与审查定位）：
+ * - 暗场监视器 + 角色光晕 + 悬浮节拍角标
+ * - 三段式精密播控条（时间码 / 段落跳转与单段循环 / 倍速、音量滑块）
+ * - 集成磁吸刻度时间轴与当前段落详情
  */
 export default function ReviewPlayer({
   src,
@@ -95,12 +87,10 @@ export default function ReviewPlayer({
   onActiveIdxChange,
   timelineTitle = '成片结构时间轴',
   timelineHint,
-  ariaLabel = '成片监视器',
-  enableSafeZone = true,
-  enableSubtitlePreview = true
+  ariaLabel = '成片监视器'
 }: ReviewPlayerProps): ReactElement {
-  const stageRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const loopIdxRef = useRef(0)
 
   const [playing, setPlaying] = useState(false)
   const [t, setT] = useState(0)
@@ -109,11 +99,8 @@ export default function ReviewPlayer({
   const [muted, setMuted] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [loopSeg, setLoopSeg] = useState(false)
-  const [safeZone, setSafeZone] = useState(false)
-  const [showSub, setShowSub] = useState(true)
   const [videoErr, setVideoErr] = useState(false)
   const [inspectedIdx, setInspectedIdx] = useState(0)
-  const [isFullscreen, setIsFullscreen] = useState(false)
 
   useEffect(() => {
     setPlaying(false)
@@ -121,13 +108,8 @@ export default function ReviewPlayer({
     setDur(0)
     setVideoErr(false)
     setInspectedIdx(0)
+    loopIdxRef.current = 0
   }, [resetKey])
-
-  useEffect(() => {
-    const onFs = (): void => setIsFullscreen(document.fullscreenElement === stageRef.current)
-    document.addEventListener('fullscreenchange', onFs)
-    return () => document.removeEventListener('fullscreenchange', onFs)
-  }, [])
 
   const canPlay = playable && Boolean(src) && !videoErr
 
@@ -158,6 +140,23 @@ export default function ReviewPlayer({
     onActiveIdxChange?.(currentIdx)
   }, [currentIdx, onActiveIdxChange])
 
+  // 当未开启循环时保持 loopIdxRef 跟随当前段，开启时锁定目标段
+  useEffect(() => {
+    if (!loopSeg) {
+      loopIdxRef.current = currentIdx
+    }
+  }, [loopSeg, currentIdx])
+
+  const toggleLoopSeg = useCallback((): void => {
+    setLoopSeg((prev) => {
+      const next = !prev
+      if (next) {
+        loopIdxRef.current = currentIdx
+      }
+      return next
+    })
+  }, [currentIdx])
+
   const togglePlay = useCallback((): void => {
     const v = videoRef.current
     if (!v || !canPlay) return
@@ -167,13 +166,15 @@ export default function ReviewPlayer({
 
   const seekTo = useCallback(
     (time: number, idx?: number): void => {
-      if (typeof idx === 'number' && idx >= 0 && idx < bounds.length) {
-        setInspectedIdx(idx)
-      } else {
-        const hit = bounds.findIndex(
+      let targetIdx = idx
+      if (typeof targetIdx !== 'number' || targetIdx < 0 || targetIdx >= bounds.length) {
+        targetIdx = bounds.findIndex(
           (b) => time >= b.startAt && (time < b.endAt || b.idx === bounds.length - 1)
         )
-        if (hit >= 0) setInspectedIdx(hit)
+      }
+      if (targetIdx >= 0 && targetIdx < bounds.length) {
+        setInspectedIdx(targetIdx)
+        loopIdxRef.current = targetIdx
       }
       const v = videoRef.current
       if (v && canPlay) v.currentTime = time
@@ -196,15 +197,25 @@ export default function ReviewPlayer({
     [bounds, currentIdx, seekTo]
   )
 
-  const toggleFullscreen = useCallback((): void => {
-    const el = stageRef.current
-    if (!el) return
-    if (document.fullscreenElement === el) {
-      void document.exitFullscreen().catch(() => {})
-    } else {
-      void el.requestFullscreen?.().catch(() => {})
+  // 使用 requestAnimationFrame 精确监控单段循环边界，避免 timeupdate 间隔（~250ms）越过段尾进入下一段
+  useEffect(() => {
+    if (!loopSeg || !playing || !canPlay || bounds.length === 0) return
+    let rafId = 0
+    const tick = (): void => {
+      const v = videoRef.current
+      const seg = bounds[Math.min(loopIdxRef.current, bounds.length - 1)]
+      if (v && seg) {
+        const endLimit = Math.min(seg.endAt - 0.04, dur > 0 ? dur - 0.04 : seg.endAt - 0.04)
+        if (v.currentTime >= endLimit) {
+          v.currentTime = seg.startAt
+          setT(seg.startAt)
+        }
+      }
+      rafId = window.requestAnimationFrame(tick)
     }
-  }, [])
+    rafId = window.requestAnimationFrame(tick)
+    return () => window.cancelAnimationFrame(rafId)
+  }, [loopSeg, playing, canPlay, bounds, dur])
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = speed
@@ -216,8 +227,6 @@ export default function ReviewPlayer({
       videoRef.current.muted = muted
     }
   }, [volume, muted, resetKey])
-
-  const hasQuotes = useMemo(() => segments.some((s) => Boolean(s.quote)), [segments])
 
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keyHandlerRef.current = (e) => {
@@ -238,15 +247,9 @@ export default function ReviewPlayer({
       e.preventDefault()
       seekTo(Math.min(totalSegDur, t + (e.shiftKey ? 5 : 1)))
     } else if (e.key === 'l' || e.key === 'L') {
-      setLoopSeg((v) => !v)
-    } else if (e.key === 's' || e.key === 'S') {
-      if (enableSafeZone && ratio === '9:16') setSafeZone((v) => !v)
-    } else if (e.key === 'c' || e.key === 'C') {
-      if (enableSubtitlePreview && hasQuotes) setShowSub((v) => !v)
+      toggleLoopSeg()
     } else if (e.key === 'm' || e.key === 'M') {
       setMuted((v) => !v)
-    } else if (e.key === 'f' || e.key === 'F') {
-      toggleFullscreen()
     }
   }
 
@@ -273,11 +276,7 @@ export default function ReviewPlayer({
   const activeColor = currentSeg?.seg.color ?? '#3b82f6'
 
   return (
-    <section
-      ref={stageRef}
-      className={`dw-stage${isFullscreen ? ' is-fullscreen' : ''}`}
-      aria-label={ariaLabel}
-    >
+    <section className="dw-stage" aria-label={ariaLabel}>
       {(headerLeft || headerRight) && (
         <div className="dw-panel-head" style={{ marginBottom: 0 }}>
           <div style={{ minWidth: 0, flex: 1 }}>{headerLeft}</div>
@@ -310,7 +309,6 @@ export default function ReviewPlayer({
                 cursor: 'pointer'
               }}
               onClick={togglePlay}
-              onDoubleClick={toggleFullscreen}
               onLoadedMetadata={(e) => {
                 setDur(e.currentTarget.duration)
                 e.currentTarget.playbackRate = speed
@@ -320,9 +318,8 @@ export default function ReviewPlayer({
                 const v = e.currentTarget
                 let ct = v.currentTime
                 if (loopSeg && bounds.length > 0) {
-                  const seg =
-                    bounds.find((b) => ct >= b.startAt && ct < b.endAt) ?? bounds[bounds.length - 1]
-                  if (ct >= seg.endAt - 0.05) {
+                  const seg = bounds[Math.min(loopIdxRef.current, bounds.length - 1)]
+                  if (seg && ct >= seg.endAt - 0.04) {
                     v.currentTime = seg.startAt
                     ct = seg.startAt
                   }
@@ -333,11 +330,15 @@ export default function ReviewPlayer({
               onPause={() => setPlaying(false)}
               onEnded={() => {
                 if (loopSeg && bounds.length > 0 && videoRef.current) {
-                  videoRef.current.currentTime = bounds[bounds.length - 1].startAt
-                  void videoRef.current.play().catch(() => setVideoErr(true))
-                } else {
-                  setPlaying(false)
+                  const seg = bounds[Math.min(loopIdxRef.current, bounds.length - 1)]
+                  if (seg) {
+                    videoRef.current.currentTime = seg.startAt
+                    setT(seg.startAt)
+                    void videoRef.current.play().catch(() => setVideoErr(true))
+                    return
+                  }
                 }
+                setPlaying(false)
               }}
               onError={() => setVideoErr(true)}
             />
@@ -358,42 +359,13 @@ export default function ReviewPlayer({
                 {currentSeg?.seg.ep ? ` · ${currentSeg.seg.ep}` : ''}
               </div>
             )}
-
-            <button
-              type="button"
-              className="dw-player-fs-btn"
-              onClick={toggleFullscreen}
-              aria-label={isFullscreen ? '退出全屏' : '全屏预览'}
-              title={isFullscreen ? '退出全屏 (F)' : '全屏预览 (F)'}
-            >
-              {isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-            </button>
-
-            {enableSubtitlePreview && showSub && currentSeg?.seg.quote && (
-              <div className="dw-subtitle-wrap">
-                <span className="dw-subtitle">「{currentSeg.seg.quote}」</span>
-              </div>
-            )}
-
-            {enableSafeZone && ratio === '9:16' && (
-              <div className={`dw-safezone${safeZone ? ' is-visible' : ''}`}>
-                <div className="dw-sz-top">顶部频道导航遮挡区</div>
-                <div className="dw-sz-right">
-                  <span className="dw-sz-dot" />
-                  <span className="dw-sz-dot" />
-                  <span className="dw-sz-dot" />
-                  <span className="dw-sz-dot" />
-                </div>
-                <div className="dw-sz-bottom">底部剧名与引导挂载安全避让区</div>
-              </div>
-            )}
           </>
         ) : (
           <div className="dw-player-empty">{emptyContent}</div>
         )}
       </div>
 
-      {/* CapCut 风格三段式精密播控条 */}
+      {/* 三段式精密播控条 */}
       <div className="dw-transport" role="group" aria-label="播放控制">
         <span className="dw-timecode">
           <span className="dw-time-cur">{fmtSec(t)}</span>
@@ -435,7 +407,7 @@ export default function ReviewPlayer({
             className={loopSeg ? 'dw-ctrl-on' : undefined}
             icon={<RetweetOutlined />}
             disabled={!canPlay || bounds.length === 0}
-            onClick={() => setLoopSeg((v) => !v)}
+            onClick={toggleLoopSeg}
             aria-label="循环当前段"
             aria-pressed={loopSeg}
             title="单段循环 (L)"
@@ -477,42 +449,6 @@ export default function ReviewPlayer({
               aria-label="音量"
             />
           </div>
-
-          {enableSubtitlePreview && hasQuotes && (
-            <Button
-              size="small"
-              type="text"
-              className={showSub ? 'dw-ctrl-on' : undefined}
-              icon={<CommentOutlined />}
-              onClick={() => setShowSub((v) => !v)}
-              aria-label="台词预览"
-              aria-pressed={showSub}
-              title="台词预览开关 (C)"
-            />
-          )}
-
-          {enableSafeZone && ratio === '9:16' && (
-            <Button
-              size="small"
-              type="text"
-              className={safeZone ? 'dw-ctrl-on' : undefined}
-              icon={<BorderOutlined />}
-              onClick={() => setSafeZone((v) => !v)}
-              aria-label="安全区参考"
-              aria-pressed={safeZone}
-              title="抖音/TikTok 安全区参考 (S)"
-            />
-          )}
-
-          <Button
-            size="small"
-            type="text"
-            icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-            disabled={!canPlay}
-            onClick={toggleFullscreen}
-            aria-label={isFullscreen ? '退出全屏' : '全屏'}
-            title="全屏审查 (F)"
-          />
         </div>
       </div>
 

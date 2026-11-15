@@ -65,6 +65,14 @@ body {
 *::before,
 *::after {
   box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .dw-shell {
@@ -588,13 +596,10 @@ textarea.dw-auto-textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: calc(100dvh - 230px);
+  max-height: calc(100dvh - 190px);
   min-height: 240px;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-  scrollbar-gutter: stable;
 }
 
 .dw-cut-item {
@@ -687,12 +692,11 @@ textarea.dw-auto-textarea {
   gap: 12px;
   min-width: 0;
   max-width: 100%;
-  /* 矮窗口下 sticky 会裁掉底部且页面滚动不可达，改为内部滚动 */
-  max-height: calc(100dvh - 80px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
+  overflow: visible;
+}
+
+.dw-stage > * {
+  flex-shrink: 0;
 }
 
 .dw-stage.is-fullscreen {
@@ -1084,7 +1088,6 @@ textarea.dw-auto-textarea {
   min-width: 0;
   max-width: 100%;
   width: 100%;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1390,7 +1393,6 @@ textarea.dw-auto-textarea {
   background: var(--bg-elevated);
   border: 1px solid var(--border-hairline);
   font-size: 12px;
-  overflow: hidden;
 }
 
 .dw-tl-active-top {
@@ -1403,7 +1405,8 @@ textarea.dw-auto-textarea {
 
 .dw-tl-active-why {
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.55;
+  white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
   min-width: 0;
@@ -1508,9 +1511,6 @@ textarea.dw-auto-textarea {
   max-height: 230px;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-  scrollbar-gutter: stable;
 }
 
 .dw-clip-row {
@@ -1631,9 +1631,6 @@ textarea.dw-auto-textarea {
 .dw-log {
   max-height: 480px;
   overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-  scrollbar-gutter: stable;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
 }
