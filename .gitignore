@@ -11,3 +11,6 @@ scripts/spike-out/
 scripts/diag-act1-raw.txt
 test/.cache/
 acl-recovery/
+# TypeScript 增量构建缓存
+tsconfig.node.tsbuildinfo
+tsconfig.web.tsbuildinfo
