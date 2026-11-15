@@ -285,25 +285,6 @@ export default function ReviewPlayer({
         </div>
       )}
 
-      {bounds.length > 0 && (
-        <div className="dw-stage-hud">
-          <span className="dw-now-pill">
-            <span className="dw-tl-dot" style={{ background: activeColor }} />
-            <span className="dw-now-text">
-              正在预览：#{currentIdx + 1} {currentSeg?.seg.label}
-              {currentSeg?.seg.ep ? ` · ${currentSeg.seg.ep}` : ''}
-            </span>
-          </span>
-          <span className="dw-kbd-tips">
-            <span className="dw-kbd-chip">Space 播放</span>
-            <span className="dw-kbd-chip">[ / ] 切段</span>
-            <span className="dw-kbd-chip">L 单段循环</span>
-            {enableSafeZone && ratio === '9:16' && <span className="dw-kbd-chip">S 安全区</span>}
-            <span className="dw-kbd-chip">F 全屏</span>
-          </span>
-        </div>
-      )}
-
       <div
         className={ratio === '9:16' ? 'dw-player' : 'dw-player dw-player-wide'}
         style={{ '--player-glow': `${activeColor}2e` } as CSSProperties}
@@ -374,6 +355,7 @@ export default function ReviewPlayer({
               <div className="dw-beat-badge">
                 <span className="dw-tl-dot" style={{ background: activeColor }} />
                 #{currentIdx + 1} {currentSeg?.seg.label}
+                {currentSeg?.seg.ep ? ` · ${currentSeg.seg.ep}` : ''}
               </div>
             )}
 
@@ -536,20 +518,9 @@ export default function ReviewPlayer({
 
       {/* 结构时间轴 + 当前片段详情 */}
       <div className="dw-tl-box">
-        <div className="dw-tl-head">
-          <span className="dw-sec-title" style={{ marginBottom: 0 }}>
-            {timelineTitle}
-            {timelineHint && <span className="dw-tl-hint">{timelineHint}</span>}
-          </span>
-          {bounds.length > 0 && (
-            <span className="dw-sub dw-mono">
-              当前 #{currentIdx + 1}/{bounds.length}
-            </span>
-          )}
-        </div>
-
         <TimelineScrubber
           ariaLabel={`${timelineTitle}，拖动定位播放进度`}
+          summary={bounds.length > 0 ? `#${currentIdx + 1}/${bounds.length}${timelineHint ? ` · ${timelineHint}` : ''}` : timelineHint}
           duration={totalSegDur}
           value={Math.min(t, totalSegDur)}
           segments={tlSegments}

@@ -35,6 +35,8 @@ interface TimelineScrubberProps {
   onChange: (value: number) => void
   /** 读屏名称，如「成片结构时间轴」 */
   ariaLabel: string
+  /** 工具栏左侧结构摘要，如「#1/6 · 共 6 段」 */
+  summary?: string
   className?: string
 }
 
@@ -78,6 +80,7 @@ export default function TimelineScrubber({
   value,
   onChange,
   ariaLabel,
+  summary,
   className
 }: TimelineScrubberProps): ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -332,12 +335,12 @@ export default function TimelineScrubber({
           className={`dw-tl2-tool${snapOn ? ' is-on' : ''}`}
           onClick={() => setSnapOn((v) => !v)}
           aria-pressed={snapOn}
-          title="拖动播放头接近段落边界时自动磁吸对齐"
+          title="拖动播放头接近段落边界时自动磁吸对齐；轻点色块直达段首"
         >
           <MagnetIcon />
-          磁吸定位
+          磁吸
         </button>
-        <span className="dw-tl2-hint">悬停预览 · 拖拽定位 · 轻点色块直达段首</span>
+        {summary && <span className="dw-tl2-hint dw-mono">{summary}</span>}
         <span className="dw-spacer" />
         <span className="dw-tl2-zoom-label dw-mono">{Math.round(zoom * 100)}%</span>
         <input

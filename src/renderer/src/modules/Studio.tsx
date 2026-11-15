@@ -507,6 +507,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   const seekSeqRef = useRef(0)
   const [currentIdx, setCurrentIdx] = useState(0)
   const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null)
+  const [inspectorTab, setInspectorTab] = useState<'craft' | 'clips'>('craft')
 
   const [instruction, setInstruction] = useState('')
   const [nextStyle, setNextStyle] = useState<CutStyle>(cut.style)
@@ -669,185 +670,187 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
         }
       />
 
-      {/* 右侧：AI 大师重剪与剪映交付 */}
+      {/* 右侧：精简双标签工作台（导出 + AI重剪与文案 / 分镜明细） */}
       <aside className="dw-inspector" aria-label="AI 剪辑大师与交付文案">
-        <div className="dw-panel" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="dw-panel" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Button
             type="primary"
-            size="large"
-            block
+            style={{ flex: 1 }}
             icon={<DownloadOutlined />}
             disabled={!playable}
             loading={exportBusy}
             onClick={doExport}
           >
-            导出剪映素材包（MP4 + SRT + 文案）
+            导出剪映素材包
           </Button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button
-              size="small"
-              style={{ flex: 1 }}
-              icon={<FolderOpenOutlined />}
-              disabled={!playable}
-              onClick={() => cut.output && openOutput(cut.output)}
-            >
-              打开成片目录
-            </Button>
-            <Popconfirm
-              title="删除这条成片方案？"
-              description="将同时删除已渲染的视频与字幕文件"
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => deleteCut(d.id, cut.id)}
-            >
-              <Button size="small" danger icon={<DeleteOutlined />} aria-label="删除成片">
-                删除
-              </Button>
-            </Popconfirm>
-          </div>
-        </div>
-
-        <div className="dw-panel">
-          <div className="dw-panel-head">
-            <span className="dw-panel-title">AI 大师重剪指令</span>
-            <span className="dw-sub">⌘/Ctrl + Enter 发送</span>
-          </div>
-          <Input.TextArea
-            className="dw-auto-textarea"
-            value={instruction}
-            onChange={(e) => setInstruction(e.target.value)}
-            placeholder="告诉 AI 哪里需要改，例如：开头 3 秒不够炸，把第 5 集反击提前；留空则直接换个思路重出"
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                if (e.nativeEvent.isComposing || e.keyCode === 229) return
-                e.preventDefault()
-                doRegen()
-              }
-            }}
+          <Button
+            icon={<FolderOpenOutlined />}
+            disabled={!playable}
+            title="打开成片目录"
+            aria-label="打开成片目录"
+            onClick={() => cut.output && openOutput(cut.output)}
           />
-          <Space size={6} wrap style={{ marginTop: 8, marginBottom: 10 }}>
-            {QUICK_PROMPTS.map((q) => (
-              <Button key={q.label} size="small" onClick={() => setInstruction(q.text)}>
-                {q.label}
-              </Button>
-            ))}
-          </Space>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Select
-              size="small"
-              value={nextStyle}
-              onChange={setNextStyle}
-              style={{ width: 106 }}
-              options={(Object.keys(CUT_STYLES) as CutStyle[]).map((k) => ({
-                value: k,
-                label: CUT_STYLES[k].name
-              }))}
-            />
-            <Select
-              size="small"
-              value={nextTarget}
-              onChange={setNextTarget}
-              style={{ width: 84 }}
-              options={[30, 45, 55, 60, 75, 90].map((v) => ({ value: v, label: `${v} 秒` }))}
-            />
-            <span className="dw-spacer" />
-            <Button
-              type="primary"
-              icon={<ThunderboltOutlined />}
-              loading={regenBusy}
-              disabled={cut.status === 'rendering'}
-              onClick={() => doRegen()}
-            >
-              AI 重新生成
-            </Button>
-          </div>
+          <Popconfirm
+            title="删除这条成片方案？"
+            description="将同时删除已渲染的视频与字幕文件"
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => deleteCut(d.id, cut.id)}
+          >
+            <Button danger icon={<DeleteOutlined />} title="删除成片" aria-label="删除成片" />
+          </Popconfirm>
         </div>
 
-        <div className="dw-panel">
-          <div className="dw-panel-head">
-            <span className="dw-panel-title">剪映花字与发布文案</span>
-          </div>
+        <div className="dw-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Segmented
+            block
+            value={inspectorTab}
+            onChange={(v) => setInspectorTab(v as 'craft' | 'clips')}
+            options={[
+              { value: 'craft', label: 'AI 重剪 & 文案' },
+              { value: 'clips', label: `分镜明细 (${cut.clips.length})` }
+            ]}
+          />
 
-          <div className="dw-copy-block">
-            <div className="dw-copy-head">
-              <span className="dw-field-label">开场 3 秒花字标题</span>
-              <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => copyText(cut.hookHeadline, '花字标题')}>
-                复制
-              </Button>
-            </div>
-            <div className="dw-hook-box">{cut.hookHeadline || '—'}</div>
-          </div>
-
-          <div className="dw-copy-block" style={{ marginTop: 8 }}>
-            <div className="dw-copy-head">
-              <span className="dw-field-label">引流发布文案</span>
-              <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => copyText(cut.publishCopy, '发布文案')}>
-                复制
-              </Button>
-            </div>
-            <p className="dw-reason" style={{ whiteSpace: 'pre-wrap' }}>
-              {cut.publishCopy || '—'}
-            </p>
-          </div>
-
-          <div style={{ marginTop: 8 }}>
-            <div className="dw-field-label">冲突主线与节奏自检</div>
-            <p className="dw-sub" style={{ margin: 0, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
-              {cut.conflictSummary}
-              {cut.directorNote ? ` · ${cut.directorNote}` : ''}
-            </p>
-          </div>
-
-          {cut.beats && cut.beats.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <div className="dw-field-label">对标爆款 Beat Sheet 节拍骨架</div>
-              <div className="dw-tl-legend" style={{ maxHeight: 88 }}>
-                {cut.beats.map((b, i) => (
-                  <span key={i} className="dw-tl-pill" title={`${b.emotion} · ${b.desc}`}>
-                    <span className="dw-tl-dot" style={{ background: ROLE_HEX[b.role] ?? '#3b82f6' }} />
-                    <span className="dw-mono">B{i + 1}</span>
-                    <span>{b.role}</span>
-                    <span className="dw-mono">{fmtSec(b.sec)}</span>
-                  </span>
-                ))}
+          {inspectorTab === 'craft' ? (
+            <>
+              <div>
+                <div className="dw-panel-head" style={{ marginBottom: 6 }}>
+                  <span className="dw-panel-title">AI 重剪指令</span>
+                  <span className="dw-sub">⌘/Ctrl + Enter</span>
+                </div>
+                <Input.TextArea
+                  className="dw-auto-textarea"
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  placeholder="例如：开头 3 秒不够炸，把第 5 集反击提前；留空则换个思路重出"
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                      e.preventDefault()
+                      doRegen()
+                    }
+                  }}
+                />
+                <Space size={6} wrap style={{ marginTop: 8, marginBottom: 10 }}>
+                  {QUICK_PROMPTS.map((q) => (
+                    <Button key={q.label} size="small" onClick={() => setInstruction(q.text)}>
+                      {q.label}
+                    </Button>
+                  ))}
+                </Space>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Select
+                    size="small"
+                    value={nextStyle}
+                    onChange={setNextStyle}
+                    style={{ width: 98 }}
+                    options={(Object.keys(CUT_STYLES) as CutStyle[]).map((k) => ({
+                      value: k,
+                      label: CUT_STYLES[k].name
+                    }))}
+                  />
+                  <Select
+                    size="small"
+                    value={nextTarget}
+                    onChange={setNextTarget}
+                    style={{ width: 78 }}
+                    options={[30, 45, 55, 60, 75, 90].map((v) => ({ value: v, label: `${v} 秒` }))}
+                  />
+                  <span className="dw-spacer" />
+                  <Button
+                    type="primary"
+                    icon={<ThunderboltOutlined />}
+                    loading={regenBusy}
+                    disabled={cut.status === 'rendering'}
+                    onClick={() => doRegen()}
+                  >
+                    重新生成
+                  </Button>
+                </div>
               </div>
+
+              <div className="dw-copy-block">
+                <div className="dw-copy-head">
+                  <span className="dw-field-label">开场 3 秒花字</span>
+                  <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => copyText(cut.hookHeadline, '花字标题')}>
+                    复制
+                  </Button>
+                </div>
+                <div className="dw-hook-box">{cut.hookHeadline || '—'}</div>
+              </div>
+
+              <div className="dw-copy-block">
+                <div className="dw-copy-head">
+                  <span className="dw-field-label">引流发布文案</span>
+                  <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => copyText(cut.publishCopy, '发布文案')}>
+                    复制
+                  </Button>
+                </div>
+                <p className="dw-reason" style={{ whiteSpace: 'pre-wrap' }}>
+                  {cut.publishCopy || '—'}
+                </p>
+              </div>
+
+              <Collapse
+                ghost
+                size="small"
+                items={[
+                  {
+                    key: 'notes',
+                    label: <span className="dw-sub">导演笔记与节拍自检</span>,
+                    children: (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <p className="dw-sub" style={{ margin: 0, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
+                          {cut.conflictSummary}
+                          {cut.directorNote ? ` · ${cut.directorNote}` : ''}
+                        </p>
+                        {cut.beats && cut.beats.length > 0 && (
+                          <div className="dw-tl-legend" style={{ maxHeight: 88 }}>
+                            {cut.beats.map((b, i) => (
+                              <span key={i} className="dw-tl-pill" title={`${b.emotion} · ${b.desc}`}>
+                                <span className="dw-tl-dot" style={{ background: ROLE_HEX[b.role] ?? '#3b82f6' }} />
+                                <span className="dw-mono">B{i + 1}</span>
+                                <span>{b.role}</span>
+                                <span className="dw-mono">{fmtSec(b.sec)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+                ]}
+              />
+            </>
+          ) : (
+            <div className="dw-lines" style={{ maxHeight: 'calc(100dvh - 300px)' }} ref={linesRef}>
+              {segments.map(({ c, idx, startAt }) => {
+                const isSelected = currentSeg?.idx === idx
+                return (
+                  <button
+                    type="button"
+                    className={`dw-clip-row${isSelected ? ' is-now' : ''}`}
+                    key={`${c.epId}-${c.in}-${idx}`}
+                    onClick={() => seekToSeg(idx, startAt)}
+                  >
+                    <span className="dw-clip-order">{idx + 1}</span>
+                    <div className="dw-clip-body">
+                      <div className="dw-clip-meta">
+                        <Tag style={{ marginInlineEnd: 0 }}>{c.role}</Tag>
+                        <span style={{ fontWeight: 500 }}>第 {c.epN} 集</span>
+                        <span className="dw-sub dw-mono">
+                          {fmtSec(c.in)}–{fmtSec(c.out)}
+                        </span>
+                      </div>
+                      <div className="dw-clip-why">{c.why}</div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
-        </div>
-
-        <div className="dw-panel">
-          <div className="dw-panel-head">
-            <span className="dw-panel-title">分镜明细（点击定位播放）</span>
-            <span className="dw-sub dw-mono">
-              {cut.clips.length} 段 · {fmtSec(cut.actualSec)}
-            </span>
-          </div>
-          <div className="dw-lines" ref={linesRef}>
-            {segments.map(({ c, idx, startAt }) => {
-              const isSelected = currentSeg?.idx === idx
-              return (
-                <button
-                  type="button"
-                  className={`dw-clip-row${isSelected ? ' is-now' : ''}`}
-                  key={`${c.epId}-${c.in}-${idx}`}
-                  onClick={() => seekToSeg(idx, startAt)}
-                >
-                  <span className="dw-clip-order">{idx + 1}</span>
-                  <div className="dw-clip-body">
-                    <div className="dw-clip-meta">
-                      <Tag style={{ marginInlineEnd: 0 }}>{c.role}</Tag>
-                      <span style={{ fontWeight: 500 }}>第 {c.epN} 集</span>
-                      <span className="dw-sub dw-mono">
-                        {fmtSec(c.in)}–{fmtSec(c.out)}
-                      </span>
-                    </div>
-                    <div className="dw-clip-why">{c.why}</div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
         </div>
       </aside>
     </>
@@ -1036,6 +1039,15 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
                   onClick={() => selectCut(c.id)}
                 >
                   <div className="dw-cut-item-top">
+                    <span className="dw-cut-item-title" style={{ marginTop: 0, flex: 1 }} title={c.title}>
+                      {c.title}
+                    </span>
+                    {c.status === 'ready' && <Tag color="success" style={{ marginInlineEnd: 0 }}>可导出</Tag>}
+                    {c.status === 'rendering' && <Tag color="processing" style={{ marginInlineEnd: 0 }}>渲染 {c.pct ?? 0}%</Tag>}
+                    {c.status === 'draft' && <Tag style={{ marginInlineEnd: 0 }}>待渲染</Tag>}
+                    {c.status === 'fail' && <Tag color="error" style={{ marginInlineEnd: 0 }}>失败</Tag>}
+                  </div>
+                  <div className="dw-cut-item-meta">
                     <Tag color={STYLE_COLOR[c.style]} style={{ marginInlineEnd: 0 }}>
                       {CUT_STYLES[c.style].name}
                     </Tag>
@@ -1049,24 +1061,9 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
                         复刻
                       </Tag>
                     )}
-                    <Tag className="dw-mono" style={{ marginInlineEnd: 0 }}>
-                      v{c.revision}
-                    </Tag>
                     <span className="dw-spacer" />
                     <span className="dw-sub dw-mono">
-                      {c.clips.length}段 · {fmtSec(c.actualSec)}
-                    </span>
-                  </div>
-                  <div className="dw-cut-item-title" title={c.title}>
-                    {c.title}
-                  </div>
-                  <div className="dw-cut-item-meta">
-                    {c.status === 'ready' && <Tag color="success" style={{ marginInlineEnd: 0 }}>可导出</Tag>}
-                    {c.status === 'rendering' && <Tag color="processing" style={{ marginInlineEnd: 0 }}>渲染 {c.pct ?? 0}%</Tag>}
-                    {c.status === 'draft' && <Tag style={{ marginInlineEnd: 0 }}>待渲染</Tag>}
-                    {c.status === 'fail' && <Tag color="error" style={{ marginInlineEnd: 0 }}>失败</Tag>}
-                    <span className="dw-cut-hook" title={c.hookHeadline}>
-                      {c.hookHeadline}
+                      v{c.revision} · {c.clips.length}段 · {fmtSec(c.actualSec)}
                     </span>
                   </div>
                 </button>
