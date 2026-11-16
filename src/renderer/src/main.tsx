@@ -6,12 +6,19 @@ import zhCN from 'antd/locale/zh_CN'
 import App from './App'
 import { useStore } from './store'
 import './styles.css'
+import dragonIcon from '../../../vibe_images/longlong-mark-final_1794838613208_7fe282a0.png'
 
 const container = document.getElementById('root')!
 type Host = HTMLElement & { __dwRoot?: ReactDOM.Root }
 const host = container as Host
 const root = host.__dwRoot ?? ReactDOM.createRoot(container)
 host.__dwRoot = root
+
+const favicon = document.createElement('link')
+favicon.rel = 'icon'
+favicon.type = 'image/png'
+favicon.href = dragonIcon
+document.head.appendChild(favicon)
 
 function RootApp(): ReactElement {
   const resolvedTheme = useStore((s) => s.resolvedTheme)

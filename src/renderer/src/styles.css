@@ -122,17 +122,19 @@ body {
   margin-bottom: 20px;
 }
 
-.dw-logo-mark {
+.dw-logo-img {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 19px;
+  display: block;
+  object-fit: cover;
   box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.dw-rail-logo:hover .dw-logo-img {
+  transform: scale(1.06);
+  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.45);
 }
 
 .dw-rail-nav {

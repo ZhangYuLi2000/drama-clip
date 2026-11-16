@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol } from 'electron'
 import path from 'path'
 import { initDb } from './db'
 import { registerIpc, registerMediaProtocol } from './ipc'
@@ -6,6 +6,10 @@ import { repairMissingMedia } from './jobs'
 import { initSettings } from './settings'
 
 const devUrl = process.env['ELECTRON_RENDERER_URL']
+
+const appIcon = nativeImage.createFromPath(
+  path.join(app.getAppPath(), 'vibe_images', 'longlong-mark-final_1794838613208_7fe282a0.png')
+)
 
 // 热更新会整页重载或重启 Electron。Windows 上 CalculateNativeWinOcclusion
 // 会把刚重载的窗口当成被挡住，停在白帧；同时上一个进程还占着 GPU 磁盘缓存。
@@ -30,7 +34,8 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    title: '短剧智剪',
+    title: '龙龙智剪',
+    icon: appIcon.isEmpty() ? undefined : appIcon,
     backgroundColor: '#09090b',
     autoHideMenuBar: true,
     webPreferences: {

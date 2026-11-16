@@ -1275,7 +1275,7 @@ function ProjectList(): ReactElement {
     <div>
       <div className="dw-page-head">
         <div className="dw-page-head-main">
-          <h2 className="dw-page-title">AI 短剧智剪</h2>
+          <h2 className="dw-page-title">龙龙智剪</h2>
           <p className="dw-page-desc">
             导入短剧后全自动分析冲突与人物，产出高转化引流切片与配套文案，拖入剪映即可发布。
           </p>

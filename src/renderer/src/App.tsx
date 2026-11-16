@@ -7,9 +7,9 @@ import {
   IconCut,
   IconSliders,
   IconStop,
-  IconSun,
-  IconClapper
+  IconSun
 } from './icons'
+import dragonIcon from '../../../vibe_images/longlong-mark-final_1794838613208_7fe282a0.png'
 import { Badge, Breadcrumb, Button, Space, Tooltip } from 'antd'
 import { findDrama, startLibrarySync, useLibrary } from './library'
 import { toast, useStore, type ThemeMode } from './store'
@@ -67,10 +67,14 @@ export default function App(): ReactElement {
   return (
     <div className="dw-shell">
       <aside className="dw-rail" aria-label="主导航">
-        <button type="button" className="dw-rail-logo" onClick={backToProjects} title="短剧智剪">
-          <span className="dw-logo-mark">
-            <IconClapper />
-          </span>
+        <button
+          type="button"
+          className="dw-rail-logo"
+          onClick={backToProjects}
+          title="龙龙智剪"
+          aria-label="龙龙智剪 · 返回项目列表"
+        >
+          <img className="dw-logo-img" src={dragonIcon} alt="" />
         </button>
 
         <nav className="dw-rail-nav">
