@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { ReactElement } from 'react'
 import {
+  BrandMark,
   IconQueue,
   IconMonitor,
   IconMoon,
@@ -9,7 +10,6 @@ import {
   IconStop,
   IconSun
 } from './icons'
-import dragonIcon from '../../../vibe_images/longlong-mark-final_1794838613208_7fe282a0.png'
 import { Badge, Breadcrumb, Button, Space, Tooltip } from 'antd'
 import { findDrama, startLibrarySync, useLibrary } from './library'
 import { toast, useStore, type ThemeMode } from './store'
@@ -74,7 +74,7 @@ export default function App(): ReactElement {
           title="龙龙智剪"
           aria-label="龙龙智剪 · 返回项目列表"
         >
-          <img className="dw-logo-img" src={dragonIcon} alt="" />
+          <BrandMark className="dw-logo-mark" size={38} />
         </button>
 
         <nav className="dw-rail-nav">

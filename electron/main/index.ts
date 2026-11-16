@@ -90,6 +90,9 @@ ipcMain.handle('select-directory', async () => {
 })
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin' && !appIcon.isEmpty()) {
+    app.dock?.setIcon(appIcon)
+  }
   initDb()
   initSettings()
   registerMediaProtocol()

@@ -53,6 +53,66 @@ function createIcon(name: string, node: ReactNode) {
 
 /* ---- 品牌 / 导航 ---- */
 
+/**
+ * 龙龙智剪 · 国际一线标准矢量品牌徽标（BrandMark）
+ * 采用黄金比例双弯刀龙角 + 东方流线型龙吻 + 标志性“智剪刀锋”S型负空间切槽，
+ * 无论在 16px favicon、36px 侧边导航栏还是 Retina 高分屏下均保持绝对锐利的几何边缘。
+ */
+export function BrandMark({
+  size = 36,
+  className
+}: {
+  size?: number
+  className?: string
+}): ReactElement {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 1024 1024"
+      fill="none"
+      role="img"
+      aria-label="龙龙智剪"
+      focusable="false"
+    >
+      <defs>
+        <linearGradient id="dw-brand-bg" x1="120" y1="80" x2="904" y2="944" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#3B82F6" />
+          <stop offset="48%" stopColor="#1D4ED8" />
+          <stop offset="100%" stopColor="#06B6D4" />
+        </linearGradient>
+        <radialGradient id="dw-brand-glow" cx="22%" cy="18%" r="64%">
+          <stop offset="0%" stopColor="#60A5FA" stopOpacity="0.42" />
+          <stop offset="100%" stopColor="#1E3A8A" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="dw-brand-glyph" x1="512" y1="140" x2="512" y2="868" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor="#F1F5F9" />
+        </linearGradient>
+      </defs>
+      <rect width="1024" height="1024" rx="240" fill="url(#dw-brand-bg)" />
+      <rect width="1024" height="1024" rx="240" fill="url(#dw-brand-glow)" />
+      <rect
+        x="14"
+        y="14"
+        width="996"
+        height="996"
+        rx="226"
+        stroke="#FFFFFF"
+        strokeOpacity="0.18"
+        strokeWidth="20"
+      />
+      <path
+        fill="url(#dw-brand-glyph)"
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M398 142 C428 232 510 302 628 354 C644 360 654 372 660 392 L670 426 C730 452 798 474 866 486 C854 538 816 584 758 616 L712 640 C722 604 726 580 722 564 C654 530 570 526 484 550 C400 504 308 502 224 544 C250 476 302 430 370 410 C266 390 196 330 174 240 C246 302 340 338 446 342 C400 286 384 214 398 142 Z M502 420 C560 416 606 440 626 486 C564 492 518 466 502 420 Z M210 584 C306 538 416 546 528 606 C574 630 622 632 672 606 C662 660 626 702 570 724 C510 702 458 662 416 618 C372 678 378 772 428 868 C296 800 212 700 210 584 Z"
+      />
+    </svg>
+  )
+}
+
 export const IconCut = createIcon(
   'IconCut',
   <>
