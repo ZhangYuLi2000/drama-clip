@@ -34,7 +34,7 @@ import {
 } from './jobs'
 import { fileExists } from './media'
 import { readReplicaEdl } from './replica-engine'
-import { cleanupCutFiles } from './render'
+import { cleanupCutFiles, syncCutCopyFiles } from './render'
 import { getSettings, saveSettings } from './settings'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.avi', '.flv', '.ts', '.m4v', '.wmv', '.webm'])
@@ -329,6 +329,27 @@ export function registerIpc(): void {
   ipcMain.handle('drama:script', (_e, dramaId: unknown) => {
     if (typeof dramaId !== 'string') return fail('参数错误')
     return ok(readGlobalScript(dramaId))
+  })
+
+  ipcMain.handle('drama:publish-tags', (_e, payload: unknown) => {
+    const { dramaId, tags } = (payload ?? {}) as { dramaId?: string; tags?: unknown }
+    if (typeof dramaId !== 'string' || !Array.isArray(tags)) return fail('参数错误')
+    const drama = findDrama(dramaId)
+    if (!drama) return fail('短剧不存在')
+    const clean: string[] = []
+    for (const t of tags) {
+      if (typeof t !== 'string') continue
+      const s = t.trim().replace(/\s+/g, '').replace(/^#+/, '')
+      if (!s) continue
+      const tag = `#${s.slice(0, 24)}`
+      if (!clean.includes(tag)) clean.push(tag)
+      if (clean.length >= 12) break
+    }
+    drama.publishTags = clean.length > 0 ? clean : undefined
+    saveLibrary()
+    syncCutCopyFiles(drama)
+    broadcastLibrary()
+    return ok(clean)
   })
 
   ipcMain.handle('cut:generate', (_e, payload: unknown) => {

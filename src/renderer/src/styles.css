@@ -75,6 +75,19 @@ body {
   height: 0;
 }
 
+.dw-icon {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  font-style: normal;
+  line-height: 0;
+  text-align: center;
+  text-transform: none;
+  vertical-align: -0.125em;
+  flex: none;
+  overflow: visible;
+}
+
 .dw-shell {
   display: flex;
   flex-direction: row;
@@ -118,7 +131,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 17px;
+  font-size: 19px;
   box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
 }
 
@@ -837,7 +850,7 @@ textarea.dw-auto-textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 15px;
   cursor: pointer;
   transition: transform 0.1s ease;
 }
@@ -1502,6 +1515,31 @@ textarea.dw-auto-textarea {
   color: var(--text-primary);
   text-wrap: pretty;
   overflow-wrap: anywhere;
+}
+
+.dw-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dw-tag-row .ant-tag {
+  margin-inline-end: 0;
+}
+
+.dw-tag-input {
+  flex: 1;
+  min-width: 108px;
+  max-width: 200px;
+}
+
+.dw-tag-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
 .dw-lines {

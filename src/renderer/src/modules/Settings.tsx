@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { IconTrash, IconPlus } from '../icons'
 import { AutoComplete, Button, Form, Input, InputNumber, Select, Space, Switch, Tag } from 'antd'
 import { DEFAULT_CUT_STYLES } from '../../../shared/types'
 import type { CutStyleConfig, ModelCfg, ReplicaSettings } from '../../../shared/types'
@@ -329,7 +329,7 @@ export default function Settings(): ReactElement {
             </Button>
             <Button
               size="small"
-              icon={<PlusOutlined />}
+              icon={<IconPlus />}
               onClick={() =>
                 setStyles((prev) => [
                   ...prev,
@@ -418,7 +418,7 @@ export default function Settings(): ReactElement {
                 type="text"
                 danger
                 disabled={styles.length <= 1}
-                icon={<DeleteOutlined />}
+                icon={<IconTrash />}
                 aria-label={`删除 ${st.name}`}
                 onClick={() => setStyles((prev) => prev.filter((_, i) => i !== idx))}
               />

@@ -14,6 +14,7 @@ const INVOKE_CHANNELS = [
   'library:rescan',
   'drama:auto-analyze',
   'drama:script',
+  'drama:publish-tags',
   'cut:generate',
   'cut:regenerate',
   'cut:render',

@@ -1,21 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import {
-  DeleteOutlined,
-  FolderOpenOutlined,
-  ImportOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  StopOutlined,
-  ThunderboltOutlined
-} from '@ant-design/icons'
+  IconTrash,
+  IconFolderOpen,
+  IconReload,
+  IconStop,
+  IconBolt
+} from '../icons'
 import {
   Button,
   Collapse,
-  Empty,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Progress,
   Segmented,
@@ -54,9 +50,16 @@ const KIND_LABEL: Record<string, string> = {
   gap: '无出处'
 }
 
-// ---------------------------------------------------------------- 导入弹窗
+// ---------------------------------------------------------------- 创建表单
 
-export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: () => void }): ReactElement {
+export interface ReplicaFormHandle {
+  submit: () => void
+}
+
+export const ReplicaCreateForm = forwardRef<
+  ReplicaFormHandle,
+  { d: Drama; active: boolean; onDone: () => void; onBusyChange: (busy: boolean) => void }
+>(function ReplicaCreateForm({ d, active, onDone, onBusyChange }, ref): ReactElement {
   const createReplica = useLibrary((s) => s.createReplica)
   const selectVideoFile = useLibrary((s) => s.selectVideoFile)
   const settings = useLibrary((s) => s.settings)
@@ -75,10 +78,9 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
   const [maskTop, setMaskTop] = useState(0.08)
   const [maskBottom, setMaskBottom] = useState(0.28)
   const [maskBand, setMaskBand] = useState('')
-  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (open && rs) {
+    if (active && rs) {
       setAudio(rs.audio)
       setIndexFps(rs.indexFps)
       setCrf(rs.crf)
@@ -89,7 +91,7 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
       setMaskBottom(rs.maskBottom)
       setMaskBand(rs.maskBand)
     }
-  }, [open, rs])
+  }, [active, rs])
 
   const pickFile = (): void => {
     selectVideoFile()
@@ -123,7 +125,7 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
       maskBottom,
       maskBand
     }
-    setBusy(true)
+    onBusyChange(true)
     createReplica(d.id, params)
       .then((r) => {
         toast('已加入原片溯源重拼队列（无需全局分析，直接用原剧集重拼）')
@@ -131,27 +133,20 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
         selectReplica(r.replicaId)
         setClipFile('')
         setTitle('')
-        onClose()
+        onDone()
       })
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '发起失败', 'info'))
-      .finally(() => setBusy(false))
+      .finally(() => onBusyChange(false))
   }
 
+  useImperativeHandle(ref, () => ({ submit }))
+
   return (
-    <Modal
-      title="导入参考切片 · 逐帧溯源原片重拼"
-      open={open}
-      onCancel={onClose}
-      onOk={submit}
-      okText="开始重拼"
-      cancelText="取消"
-      confirmLoading={busy}
-      width={600}
-    >
+    <>
       <div className="dw-field-label">参考切片视频（需为本剧剪辑产物）</div>
       <Space.Compact block style={{ marginBottom: 12 }}>
         <Input value={clipFile} readOnly placeholder="选择要溯源还原的参考切片（mp4/mov/mkv…）" />
-        <Button icon={<FolderOpenOutlined />} onClick={pickFile}>
+        <Button icon={<IconFolderOpen />} onClick={pickFile}>
           选择文件
         </Button>
       </Space.Compact>
@@ -260,12 +255,9 @@ export function NewReplicaModal({ d, open, onClose }: { d: Drama; open: boolean;
           }
         ]}
       />
-      <p className="dw-sub" style={{ marginTop: 12, marginBottom: 0 }}>
-        逐帧溯源参考切片出自本剧哪一集哪一帧，再用原片原画幅、原生帧率、原声对白重拼出干净成片（无水印/无字幕/无镜像）。
-      </p>
-    </Modal>
+    </>
   )
-}
+})
 
 // ---------------------------------------------------------------- 工作区
 
@@ -410,7 +402,7 @@ export function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): 
               <Button
                 size="small"
                 danger
-                icon={<StopOutlined />}
+                icon={<IconStop />}
                 onClick={() =>
                   stopTasks(d.id)
                     .then(() => toast('已终止重拼任务', 'info'))
@@ -423,7 +415,7 @@ export function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): 
           ) : (
             <>
               <span className="dw-sub">{task.error || '成片尚未生成'}</span>
-              <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => retryReplica(d.id, task.id)}>
+              <Button size="small" type="primary" icon={<IconReload />} onClick={() => retryReplica(d.id, task.id)}>
                 重试重拼
               </Button>
             </>
@@ -510,7 +502,7 @@ export function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): 
           <Button
             block
             type="primary"
-            icon={<ThunderboltOutlined />}
+            icon={<IconBolt />}
             style={{ marginTop: 10 }}
             loading={busy}
             disabled={running || !task.tracePath}
@@ -562,7 +554,7 @@ export function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): 
 
         <div className="dw-panel" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Button
-            icon={<FolderOpenOutlined />}
+            icon={<IconFolderOpen />}
             disabled={!task.output}
             onClick={() => openReplicaOutput(task.output!)}
           >
@@ -583,80 +575,12 @@ export function ReplicaWorkspace({ d, task }: { d: Drama; task: ReplicaTask }): 
                 .catch((e: unknown) => toast(e instanceof Error ? e.message : '删除失败', 'info'))
             }
           >
-            <Button danger icon={<DeleteOutlined />} disabled={running}>
+            <Button danger icon={<IconTrash />} disabled={running}>
               删除任务
             </Button>
           </Popconfirm>
         </div>
       </aside>
     </>
-  )
-}
-
-// ---------------------------------------------------------------- 面板
-
-export default function ReplicaPanel({ d, onImport }: { d: Drama; onImport: () => void }): ReactElement {
-  const replicas = d.replicas ?? []
-  const selectedReplicaId = useStore((s) => s.selectedReplicaId)
-  const selectReplica = useStore((s) => s.selectReplica)
-  const active = replicas.find((r) => r.id === selectedReplicaId) ?? replicas[0] ?? null
-
-  if (replicas.length === 0) {
-    return (
-      <div className="dw-panel" style={{ padding: '48px 20px', textAlign: 'center' }}>
-        <Empty
-          image={<ImportOutlined style={{ fontSize: 42, color: 'var(--text-muted)' }} />}
-          description="导入一条本剧参考切片，逐帧溯源并用原片重拼出无水印干净成片（无需全局分析）"
-        >
-          <Button type="primary" icon={<PlusOutlined />} onClick={onImport}>
-            导入第一条参考切片
-          </Button>
-        </Empty>
-      </div>
-    )
-  }
-
-  return (
-    <div className="dw-nle-grid">
-      <aside className="dw-panel" aria-label="重拼任务列表">
-        <div className="dw-panel-head">
-          <span className="dw-panel-title">重拼任务</span>
-          <span className="dw-sub dw-mono">{replicas.length}</span>
-        </div>
-        <div className="dw-cut-list">
-          {replicas.map((r) => (
-            <button
-              type="button"
-              key={r.id}
-              className={`dw-cut-item${active?.id === r.id ? ' is-active' : ''}`}
-              onClick={() => selectReplica(r.id)}
-            >
-              <div className="dw-cut-item-top">
-                <Tag
-                  color={r.status === 'ready' ? 'success' : r.status === 'fail' ? 'error' : r.status === 'queue' ? 'default' : 'processing'}
-                  style={{ marginInlineEnd: 0 }}
-                >
-                  {STATUS_LABEL[r.status]}
-                  {r.status !== 'ready' && r.status !== 'fail' && r.status !== 'queue' ? ` ${r.pct}%` : ''}
-                </Tag>
-                <span className="dw-spacer" />
-                <span className="dw-sub dw-mono">{r.stats ? fmtSec(r.stats.totalSeconds) : ''}</span>
-              </div>
-              <div className="dw-cut-item-title">{r.clipTitle}</div>
-              <div className="dw-cut-item-meta">
-                {r.stats && <Tag className="dw-mono">{r.stats.segments} 段</Tag>}
-                <span className="dw-cut-hook">
-                  {r.status === 'fail' ? (r.error ?? '') : r.stageNote ?? (r.stats ? `${r.stats.resolution} · ${r.stats.fps}fps` : '')}
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
-        <Button block type="dashed" icon={<PlusOutlined />} style={{ marginTop: 10 }} onClick={onImport}>
-          导入参考切片
-        </Button>
-      </aside>
-      {active && <ReplicaWorkspace d={d} task={active} />}
-    </div>
   )
 }

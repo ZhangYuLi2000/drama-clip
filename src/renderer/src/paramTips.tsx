@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactElement } from 'react'
-import { QuestionCircleOutlined } from '@ant-design/icons'
+import { IconHelp } from './icons'
 import { Tooltip } from 'antd'
 
 const listStyle: CSSProperties = { margin: '4px 0', paddingLeft: 16 }
@@ -38,7 +38,7 @@ export const RADIUS_TIP: ReactElement = (
 export function ParamTip({ tip }: { tip: ReactElement }): ReactElement {
   return (
     <Tooltip title={tip} styles={{ root: { maxWidth: 380 } }}>
-      <QuestionCircleOutlined role="img" aria-label="参数说明" style={{ marginLeft: 4, color: 'var(--text-muted)', cursor: 'help' }} />
+      <IconHelp role="img" aria-label="参数说明" style={{ marginLeft: 4, color: 'var(--text-muted)', cursor: 'help' }} />
     </Tooltip>
   )
 }

@@ -1,16 +1,16 @@
 import { useEffect } from 'react'
 import type { ReactElement } from 'react'
 import {
-  ClockCircleOutlined,
-  DesktopOutlined,
-  MoonOutlined,
-  ScissorOutlined,
-  SettingOutlined,
-  StopOutlined,
-  SunOutlined,
-  ThunderboltOutlined
-} from '@ant-design/icons'
-import { Badge, Breadcrumb, Button, Segmented, Space, Tooltip } from 'antd'
+  IconQueue,
+  IconMonitor,
+  IconMoon,
+  IconCut,
+  IconSliders,
+  IconStop,
+  IconSun,
+  IconClapper
+} from './icons'
+import { Badge, Breadcrumb, Button, Space, Tooltip } from 'antd'
 import { findDrama, startLibrarySync, useLibrary } from './library'
 import { toast, useStore, type ThemeMode } from './store'
 import Queue from './modules/Queue'
@@ -30,7 +30,6 @@ export default function App(): ReactElement {
   const goto = useStore((s) => s.goto)
   const backToProjects = useStore((s) => s.backToProjects)
   const themeMode = useStore((s) => s.themeMode)
-  const setThemeMode = useStore((s) => s.setThemeMode)
   const cycleThemeMode = useStore((s) => s.cycleThemeMode)
   const running = useLibrary((s) => s.running)
   const stopTasks = useLibrary((s) => s.stopTasks)
@@ -63,14 +62,14 @@ export default function App(): ReactElement {
         : [{ title: '系统设置' }]
 
   const themeIcon =
-    themeMode === 'light' ? <SunOutlined /> : themeMode === 'system' ? <DesktopOutlined /> : <MoonOutlined />
+    themeMode === 'light' ? <IconSun /> : themeMode === 'system' ? <IconMonitor /> : <IconMoon />
 
   return (
     <div className="dw-shell">
       <aside className="dw-rail" aria-label="主导航">
         <button type="button" className="dw-rail-logo" onClick={backToProjects} title="短剧智剪">
           <span className="dw-logo-mark">
-            <ThunderboltOutlined />
+            <IconClapper />
           </span>
         </button>
 
@@ -82,7 +81,7 @@ export default function App(): ReactElement {
               onClick={backToProjects}
               aria-label="AI 智剪"
             >
-              <ScissorOutlined />
+              <IconCut />
               <span>智剪</span>
             </button>
           </Tooltip>
@@ -95,7 +94,7 @@ export default function App(): ReactElement {
               aria-label="任务队列"
             >
               <Badge count={running} size="small" offset={[4, -2]}>
-                <ClockCircleOutlined style={{ fontSize: 18, color: 'inherit' }} />
+                <IconQueue style={{ fontSize: 18, color: 'inherit' }} />
               </Badge>
               <span>队列</span>
             </button>
@@ -103,7 +102,7 @@ export default function App(): ReactElement {
         </nav>
 
         <div className="dw-rail-foot">
-          <Tooltip title={`当前：${THEME_LABEL[themeMode]}（点击切换）`} placement="right">
+          <Tooltip title={`当前：${THEME_LABEL[themeMode]} · 点击循环切换 暗色 → 亮色 → 跟随系统`} placement="right">
             <button
               type="button"
               className="dw-rail-btn"
@@ -122,7 +121,7 @@ export default function App(): ReactElement {
               onClick={() => goto('settings')}
               aria-label="系统设置"
             >
-              <SettingOutlined />
+              <IconSliders />
               <span>设置</span>
             </button>
           </Tooltip>
@@ -145,7 +144,7 @@ export default function App(): ReactElement {
                     size="small"
                     danger
                     type="text"
-                    icon={<StopOutlined />}
+                    icon={<IconStop />}
                     aria-label="终止任务"
                     onClick={() =>
                       stopTasks()
@@ -156,17 +155,6 @@ export default function App(): ReactElement {
                 </Tooltip>
               </Space>
             )}
-            <Segmented
-              size="small"
-              value={themeMode}
-              onChange={(v) => setThemeMode(v as ThemeMode)}
-              options={[
-                { value: 'dark', icon: <MoonOutlined />, title: '暗色主题' },
-                { value: 'light', icon: <SunOutlined />, title: '亮色主题' },
-                { value: 'system', icon: <DesktopOutlined />, title: '跟随系统' }
-              ]}
-              aria-label="切换界面主题"
-            />
           </Space>
         </header>
 

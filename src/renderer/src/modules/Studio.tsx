@@ -1,25 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import {
-  CopyOutlined,
-  DeleteOutlined,
-  ExperimentOutlined,
-  FireOutlined,
-  FolderOpenOutlined,
-  GlobalOutlined,
-  ImportOutlined,
-  InboxOutlined,
-  LeftOutlined,
-  PlusOutlined,
-  ProfileOutlined,
-  ReloadOutlined,
-  ScanOutlined,
-  ScissorOutlined,
-  SettingOutlined,
-  StopOutlined,
-  ThunderboltOutlined,
-  VideoCameraAddOutlined
-} from '@ant-design/icons'
+  IconCopy,
+  IconTrash,
+  IconFlask,
+  IconFlame,
+  IconFolderOpen,
+  IconGlobe,
+  IconImport,
+  IconInbox,
+  IconBack,
+  IconPlus,
+  IconScript,
+  IconReload,
+  IconScan,
+  IconCut,
+  IconSliders,
+  IconStop,
+  IconBolt,
+  IconVideo
+} from '../icons'
 import {
   Alert,
   Button,
@@ -40,12 +40,13 @@ import {
   Tag
 } from 'antd'
 import type { CutMode, CutStyle, CutStyleConfig, Drama, GlobalScript, PromoCut } from '../../../shared/types'
-import { DEFAULT_CUT_STYLES } from '../../../shared/types'
+import { DEFAULT_CUT_STYLES, withPublishTags } from '../../../shared/types'
 import { findDrama, fmtSec, useLibrary } from '../library'
 import { toast, useStore } from '../store'
 import ReviewPlayer from '../ReviewPlayer'
 import type { ReviewSegment, SeekRequest } from '../ReviewPlayer'
-import { NewReplicaModal, ReplicaWorkspace } from './Replica'
+import { ReplicaCreateForm, ReplicaWorkspace } from './Replica'
+import type { ReplicaFormHandle } from './Replica'
 
 const STYLE_COLOR: Record<string, string> = {
   auto: 'default',
@@ -223,13 +224,30 @@ function GlobalAnalyzeModal({ d, open, onClose }: { d: Drama; open: boolean; onC
   )
 }
 
-function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: () => void }): ReactElement {
+function NewCutModal({
+  d,
+  open,
+  onClose,
+  initialMode
+}: {
+  d: Drama
+  open: boolean
+  onClose: () => void
+  initialMode?: CutMode | 'replica'
+}): ReactElement {
   const generateCut = useLibrary((s) => s.generateCut)
   const pickVideoFile = useLibrary((s) => s.pickVideoFile)
   const styles = useLibrary((s) => s.settings?.styles ?? DEFAULT_CUT_STYLES)
   const goto = useStore((s) => s.goto)
+  const analyzed = d.global?.status === 'done'
 
-  const [mode, setMode] = useState<CutMode>('independent')
+  const [mode, setMode] = useState<CutMode | 'replica'>('independent')
+  const [replicaBusy, setReplicaBusy] = useState(false)
+  const replicaFormRef = useRef<ReplicaFormHandle>(null)
+
+  useEffect(() => {
+    if (open) setMode(initialMode ?? (d.global?.status === 'done' ? 'independent' : 'replica'))
+  }, [open, initialMode])
   const [style, setStyle] = useState<CutStyle>('auto')
   const [targetSec, setTargetSec] = useState(45)
   const [ratio, setRatio] = useState<'9:16' | '16:9'>('9:16')
@@ -239,7 +257,7 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
   const [refCopy, setRefCopy] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const changeMode = (nextMode: CutMode): void => {
+  const changeMode = (nextMode: CutMode | 'replica'): void => {
     setMode(nextMode)
     if (nextMode === 'hook-matrix' && count < 2) setCount(3)
     if (nextMode === 'viral-clone') setCount(1)
@@ -254,6 +272,7 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
   }
 
   const submit = (): void => {
+    if (mode === 'replica') return
     if (mode === 'viral-clone' && !refVideoPath && !refCopy.trim() && !prompt.trim()) {
       toast('请选择参考视频，或填写参考文案 / 套用下方爆款结构', 'info')
       return
@@ -289,29 +308,32 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
 
   return (
     <Modal
-      title="AI 新剪成片"
+      title="新建成片"
       open={open}
       onCancel={onClose}
-      onOk={submit}
+      onOk={() => (mode === 'replica' ? replicaFormRef.current?.submit() : submit())}
       okText={
-        mode === 'hook-matrix'
-          ? `生成 ${Math.max(2, count)} 条测试`
-          : mode === 'viral-clone'
-            ? '开始对标复刻'
-            : `生成 ${count} 条成片`
+        mode === 'replica'
+          ? '开始重拼'
+          : mode === 'hook-matrix'
+            ? `生成 ${Math.max(2, count)} 条测试`
+            : mode === 'viral-clone'
+              ? '开始对标复刻'
+              : `生成 ${count} 条成片`
       }
       cancelText="取消"
-      confirmLoading={busy}
-      width={580}
+      confirmLoading={mode === 'replica' ? replicaBusy : busy}
+      width={mode === 'replica' ? 600 : 580}
     >
       <Segmented
         block
         value={mode}
-        onChange={(v) => changeMode(v as CutMode)}
+        onChange={(v) => changeMode(v as CutMode | 'replica')}
         options={[
-          { value: 'independent', label: '标准智剪', icon: <ThunderboltOutlined /> },
-          { value: 'hook-matrix', label: '多钩子测试', icon: <ExperimentOutlined /> },
-          { value: 'viral-clone', label: '对标爆款', icon: <FireOutlined /> }
+          { value: 'independent', label: '标准智剪', icon: <IconBolt />, disabled: !analyzed },
+          { value: 'hook-matrix', label: '多钩子测试', icon: <IconFlask />, disabled: !analyzed },
+          { value: 'viral-clone', label: '对标爆款', icon: <IconFlame />, disabled: !analyzed },
+          { value: 'replica', label: '溯源重拼', icon: <IconImport /> }
         ]}
         style={{ marginBottom: 6 }}
       />
@@ -319,139 +341,150 @@ function NewCutModal({ d, open, onClose }: { d: Drama; open: boolean; onClose: (
         {mode === 'independent' && 'AI 自动挑选高冲突主线，生成独立引流切片。'}
         {mode === 'hook-matrix' && '同一条主线故事，自动搭配多个不同的前 3 秒开场用于投流测试。'}
         {mode === 'viral-clone' && '上传参考视频或套用爆款结构，AI 提取节拍后 1:1 复刻到本剧。'}
+        {mode === 'replica' &&
+          '导入本剧剪辑产物作参考，逐帧溯源出处后用原片原画幅、原生帧率、原声对白重拼干净成片（无水印/无字幕/无镜像）。'}
+        {!analyzed && ' 全局分析未完成，前三种智剪模式暂不可用；溯源重拼不依赖分析。'}
       </p>
 
-      <div className="dw-field-grid is-compact" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-        <div className="dw-field">
-          <span className="dw-field-label">{mode === 'hook-matrix' ? '开场钩子数' : '生成条数'}</span>
-          <div className="dw-field-control">
-            <Select
-              value={mode === 'hook-matrix' ? Math.max(2, count) : count}
-              onChange={setCount}
-              options={(mode === 'hook-matrix' ? [2, 3, 4, 5] : [1, 2, 3, 4, 5]).map((v) => ({
-                value: v,
-                label: mode === 'hook-matrix' ? `${v} 个版本` : `${v} 条`
-              }))}
-            />
-          </div>
-        </div>
-        <div className="dw-field">
-          <span className="dw-field-label">目标时长</span>
-          <div className="dw-field-control">
-            <Select
-              value={targetSec}
-              onChange={setTargetSec}
-              options={DURATION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-            />
-          </div>
-        </div>
-        <div className="dw-field">
-          <span className="dw-field-label">画幅</span>
-          <div className="dw-field-control">
-            <Select
-              value={ratio}
-              onChange={setRatio}
-              options={[
-                { value: '9:16', label: '9:16 竖屏' },
-                { value: '16:9', label: '16:9 横屏' }
-              ]}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span className="dw-field-label" style={{ marginBottom: 0 }}>
-            叙事风格（可选）
-          </span>
-          <Button
-            size="small"
-            type="link"
-            icon={<SettingOutlined />}
-            style={{ paddingInline: 0, height: 'auto' }}
-            onClick={() => {
-              onClose()
-              goto('settings')
-            }}
-          >
-            自定义风格
-          </Button>
-        </div>
-        <Select
-          style={{ width: '100%' }}
-          value={style}
-          onChange={(v) => {
-            setStyle(v)
-            const found = styles.find((s) => s.id === v)
-            if (found && found.defaultTarget >= 0) setTargetSec(found.defaultTarget)
-          }}
-          options={[
-            { value: 'auto', label: 'AI 自动定调（不限定风格）' },
-            ...styles.map((s) => ({ value: s.id, label: s.name }))
-          ]}
-        />
-        {selectedStyle?.desc && (
-          <p className="dw-sub" style={{ marginTop: 4, marginBottom: 0 }}>
-            {selectedStyle.desc}
-          </p>
-        )}
-      </div>
-
-      {mode === 'viral-clone' && (
+      {mode !== 'replica' && (
         <>
-          <div className="dw-copy-block" style={{ marginBottom: 12 }}>
-            <div className="dw-field-label">参考视频（可选）</div>
-            <div className="dw-dir" style={{ marginBottom: 8 }}>
-              <span className="dw-dir-path" title={refVideoPath}>
-                {refVideoPath || '未选择参考视频（也可仅靠下方文案或母版复刻）'}
-              </span>
-              {refVideoPath && (
-                <Button size="small" type="text" onClick={() => setRefVideoPath('')}>
-                  清除
-                </Button>
-              )}
-              <Button size="small" icon={<VideoCameraAddOutlined />} onClick={pickRefVideo}>
-                选择视频
-              </Button>
+          <div className="dw-field-grid is-compact" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+            <div className="dw-field">
+              <span className="dw-field-label">{mode === 'hook-matrix' ? '开场钩子数' : '生成条数'}</span>
+              <div className="dw-field-control">
+                <Select
+                  value={mode === 'hook-matrix' ? Math.max(2, count) : count}
+                  onChange={setCount}
+                  options={(mode === 'hook-matrix' ? [2, 3, 4, 5] : [1, 2, 3, 4, 5]).map((v) => ({
+                    value: v,
+                    label: mode === 'hook-matrix' ? `${v} 个版本` : `${v} 条`
+                  }))}
+                />
+              </div>
             </div>
-            <div className="dw-field-label">参考台词或结构描述（可选）</div>
-            <Input.TextArea
-              className="dw-auto-textarea"
-              value={refCopy}
-              onChange={(e) => setRefCopy(e.target.value)}
-              placeholder="粘贴对标爆款的台词文案或分镜节奏，AI 将按相同情绪曲线复刻"
-            />
+            <div className="dw-field">
+              <span className="dw-field-label">目标时长</span>
+              <div className="dw-field-control">
+                <Select
+                  value={targetSec}
+                  onChange={setTargetSec}
+                  options={DURATION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </div>
+            </div>
+            <div className="dw-field">
+              <span className="dw-field-label">画幅</span>
+              <div className="dw-field-control">
+                <Select
+                  value={ratio}
+                  onChange={setRatio}
+                  options={[
+                    { value: '9:16', label: '9:16 竖屏' },
+                    { value: '16:9', label: '16:9 横屏' }
+                  ]}
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="dw-field-label">常用爆款结构（可选 · 点击填入）</div>
-          <div className="dw-tpl-grid">
-            {VIRAL_TEMPLATES.map((tpl) => (
-              <button
-                type="button"
-                key={tpl.title}
-                className="dw-tpl-btn"
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span className="dw-field-label" style={{ marginBottom: 0 }}>
+                叙事风格（可选）
+              </span>
+              <Button
+                size="small"
+                type="link"
+                icon={<IconSliders />}
+                style={{ paddingInline: 0, height: 'auto' }}
                 onClick={() => {
-                  setStyle(tpl.style)
-                  setTargetSec(tpl.target)
-                  setPrompt(tpl.prompt)
+                  onClose()
+                  goto('settings')
                 }}
               >
-                <span className="dw-tpl-title">{tpl.title}</span>
-                <span className="dw-tpl-desc">{tpl.desc}</span>
-              </button>
-            ))}
+                自定义风格
+              </Button>
+            </div>
+            <Select
+              style={{ width: '100%' }}
+              value={style}
+              onChange={(v) => {
+                setStyle(v)
+                const found = styles.find((s) => s.id === v)
+                if (found && found.defaultTarget >= 0) setTargetSec(found.defaultTarget)
+              }}
+              options={[
+                { value: 'auto', label: 'AI 自动定调（不限定风格）' },
+                ...styles.map((s) => ({ value: s.id, label: s.name }))
+              ]}
+            />
+            {selectedStyle?.desc && (
+              <p className="dw-sub" style={{ marginTop: 4, marginBottom: 0 }}>
+                {selectedStyle.desc}
+              </p>
+            )}
           </div>
+
+          {mode === 'viral-clone' && (
+            <>
+              <div className="dw-copy-block" style={{ marginBottom: 12 }}>
+                <div className="dw-field-label">参考视频（可选）</div>
+                <div className="dw-dir" style={{ marginBottom: 8 }}>
+                  <span className="dw-dir-path" title={refVideoPath}>
+                    {refVideoPath || '未选择参考视频（也可仅靠下方文案或母版复刻）'}
+                  </span>
+                  {refVideoPath && (
+                    <Button size="small" type="text" onClick={() => setRefVideoPath('')}>
+                      清除
+                    </Button>
+                  )}
+                  <Button size="small" icon={<IconVideo />} onClick={pickRefVideo}>
+                    选择视频
+                  </Button>
+                </div>
+                <div className="dw-field-label">参考台词或结构描述（可选）</div>
+                <Input.TextArea
+                  className="dw-auto-textarea"
+                  value={refCopy}
+                  onChange={(e) => setRefCopy(e.target.value)}
+                  placeholder="粘贴对标爆款的台词文案或分镜节奏，AI 将按相同情绪曲线复刻"
+                />
+              </div>
+
+              <div className="dw-field-label">常用爆款结构（可选 · 点击填入）</div>
+              <div className="dw-tpl-grid">
+                {VIRAL_TEMPLATES.map((tpl) => (
+                  <button
+                    type="button"
+                    key={tpl.title}
+                    className="dw-tpl-btn"
+                    onClick={() => {
+                      setStyle(tpl.style)
+                      setTargetSec(tpl.target)
+                      setPrompt(tpl.prompt)
+                    }}
+                  >
+                    <span className="dw-tpl-title">{tpl.title}</span>
+                    <span className="dw-tpl-desc">{tpl.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="dw-field-label">补充要求（可选）</div>
+          <Input.TextArea
+            className="dw-auto-textarea"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="例如：重点突出女主亮明身份打脸反派，把第 6 集的耳光放最前面做钩子"
+          />
         </>
       )}
 
-      <div className="dw-field-label">补充要求（可选）</div>
-      <Input.TextArea
-        className="dw-auto-textarea"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="例如：重点突出女主亮明身份打脸反派，把第 6 集的耳光放最前面做钩子"
-      />
+      {mode === 'replica' && (
+        <ReplicaCreateForm ref={replicaFormRef} d={d} active={open} onDone={onClose} onBusyChange={setReplicaBusy} />
+      )}
     </Modal>
   )
 }
@@ -544,6 +577,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   const deleteCut = useLibrary((s) => s.deleteCut)
   const openOutput = useLibrary((s) => s.openOutput)
   const stopTasks = useLibrary((s) => s.stopTasks)
+  const setPublishTags = useLibrary((s) => s.setPublishTags)
   const styles = useLibrary((s) => s.settings?.styles ?? DEFAULT_CUT_STYLES)
 
   const linesRef = useRef<HTMLDivElement>(null)
@@ -556,6 +590,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
   const [nextStyle, setNextStyle] = useState<CutStyle>(cut.style || 'auto')
   const [nextTarget, setNextTarget] = useState<number>(cut.targetSec)
   const [regenBusy, setRegenBusy] = useState(false)
+  const [tagInput, setTagInput] = useState('')
 
   useEffect(() => {
     setCurrentIdx(0)
@@ -585,6 +620,19 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
       })
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '重剪失败', 'info'))
       .finally(() => setRegenBusy(false))
+  }
+
+  const publishTags = d.publishTags ?? []
+  const fullPublishCopy = withPublishTags(cut.publishCopy, publishTags)
+
+  const saveTags = (next: string[]): void => {
+    setPublishTags(d.id, next).catch((e: unknown) => toast(e instanceof Error ? e.message : '标签保存失败', 'info'))
+  }
+
+  const commitTagInput = (): void => {
+    const parts = tagInput.split(/[\s,，、]+/).filter(Boolean)
+    setTagInput('')
+    if (parts.length > 0) saveTags([...publishTags, ...parts])
   }
 
   const { segments, totalSegDur, reviewSegments } = useMemo(() => {
@@ -682,7 +730,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               <Button
                 size="small"
                 danger
-                icon={<StopOutlined />}
+                icon={<IconStop />}
                 onClick={() =>
                   stopTasks(d.id)
                     .then(() => toast('已终止当前渲染任务', 'info'))
@@ -695,7 +743,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
           ) : (
             <>
               <span className="dw-sub">{cut.error || '成片尚未渲染或文件丢失'}</span>
-              <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={() => renderCut(d.id, cut.id)}>
+              <Button size="small" type="primary" icon={<IconReload />} onClick={() => renderCut(d.id, cut.id)}>
                 重新渲染
               </Button>
             </>
@@ -709,7 +757,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
           <Button
             type="primary"
             style={{ flex: 1 }}
-            icon={<FolderOpenOutlined />}
+            icon={<IconFolderOpen />}
             disabled={!playable}
             onClick={() => cut.output && openOutput(cut.output)}
           >
@@ -723,7 +771,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
             okButtonProps={{ danger: true }}
             onConfirm={() => deleteCut(d.id, cut.id)}
           >
-            <Button danger icon={<DeleteOutlined />} title="删除成片" aria-label="删除成片" />
+            <Button danger icon={<IconTrash />} title="删除成片" aria-label="删除成片" />
           </Popconfirm>
         </div>
 
@@ -786,7 +834,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
                   <span className="dw-spacer" />
                   <Button
                     type="primary"
-                    icon={<ThunderboltOutlined />}
+                    icon={<IconBolt />}
                     loading={regenBusy}
                     disabled={cut.status === 'rendering'}
                     onClick={() => doRegen()}
@@ -799,7 +847,7 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               <div className="dw-copy-block">
                 <div className="dw-copy-head">
                   <span className="dw-field-label">开场 3 秒花字</span>
-                  <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => copyText(cut.hookHeadline, '花字标题')}>
+                  <Button size="small" type="link" icon={<IconCopy />} onClick={() => copyText(cut.hookHeadline, '花字标题')}>
                     复制
                   </Button>
                 </div>
@@ -809,13 +857,43 @@ function CutWorkspace({ d, cut }: { d: Drama; cut: PromoCut }): ReactElement {
               <div className="dw-copy-block">
                 <div className="dw-copy-head">
                   <span className="dw-field-label">引流发布文案</span>
-                  <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => copyText(cut.publishCopy, '发布文案')}>
+                  <Button size="small" type="link" icon={<IconCopy />} onClick={() => copyText(fullPublishCopy, '发布文案')}>
                     复制
                   </Button>
                 </div>
                 <p className="dw-reason" style={{ whiteSpace: 'pre-wrap' }}>
                   {cut.publishCopy || '—'}
                 </p>
+                <div className="dw-tag-row">
+                  {publishTags.map((t) => (
+                    <Tag
+                      key={t}
+                      color="blue"
+                      closable
+                      onClose={(e) => {
+                        e.preventDefault()
+                        saveTags(publishTags.filter((x) => x !== t))
+                      }}
+                    >
+                      {t}
+                    </Tag>
+                  ))}
+                  <Input
+                    size="small"
+                    className="dw-tag-input"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onPressEnter={(e) => {
+                      if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                      commitTagInput()
+                    }}
+                    onBlur={commitTagInput}
+                    placeholder={publishTags.length > 0 ? '继续添加标签' : '添加标签，如 #爽剧'}
+                    aria-label="添加本剧话题标签"
+                    maxLength={60}
+                  />
+                </div>
+                <div className="dw-tag-hint">本剧通用标签 · 自动追加到该剧所有发布文案末尾，复制时一并带上</div>
               </div>
 
               <Collapse
@@ -903,9 +981,14 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
 
   const [analyzeOpen, setAnalyzeOpen] = useState(false)
   const [newCutOpen, setNewCutOpen] = useState(false)
-  const [replicaOpen, setReplicaOpen] = useState(false)
+  const [newCutInitialMode, setNewCutInitialMode] = useState<CutMode | 'replica' | undefined>(undefined)
   const [scriptOpen, setScriptOpen] = useState(false)
   const [rescanning, setRescanning] = useState(false)
+
+  const openNewCut = (mode?: CutMode | 'replica'): void => {
+    setNewCutInitialMode(mode)
+    setNewCutOpen(true)
+  }
 
   const cuts = d.cuts ?? []
   const replicas = d.replicas ?? []
@@ -944,7 +1027,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
     <div>
       <div className="dw-studio-head">
         <div className="dw-studio-head-left">
-          <Button icon={<LeftOutlined />} onClick={backToProjects} aria-label="返回项目列表" title="返回项目列表" />
+          <Button icon={<IconBack />} onClick={backToProjects} aria-label="返回项目列表" title="返回项目列表" />
           <div className="dw-studio-title-wrap">
             <div className="dw-studio-title-row">
               <h2 className="dw-page-title" title={d.title}>{d.title}</h2>
@@ -961,36 +1044,32 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
         <div className="dw-studio-head-right">
           <Space size={6} wrap>
             <Button
-              icon={<ScanOutlined />}
+              icon={<IconScan />}
               loading={rescanning}
               onClick={doRescan}
               title="重新扫描剧集目录"
               aria-label="重新扫描"
             />
             <Button
-              icon={<ProfileOutlined />}
+              icon={<IconScript />}
               disabled={g?.status !== 'done'}
               onClick={() => setScriptOpen(true)}
             >
               剧本
             </Button>
             <Button
-              icon={<GlobalOutlined />}
+              icon={<IconGlobe />}
               loading={g?.status === 'run' || g?.status === 'queue'}
               onClick={() => setAnalyzeOpen(true)}
             >
               {g?.status === 'done' ? '重分析' : '全局分析'}
             </Button>
-            <Button icon={<ImportOutlined />} onClick={() => setReplicaOpen(true)}>
-              导入参考切片
-            </Button>
             <Button
               type="primary"
-              icon={<PlusOutlined />}
-              disabled={g?.status !== 'done'}
-              onClick={() => setNewCutOpen(true)}
+              icon={<IconPlus />}
+              onClick={() => openNewCut()}
             >
-              AI 新剪成片
+              新建成片
             </Button>
           </Space>
         </div>
@@ -1012,7 +1091,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
             <Button
               size="small"
               danger
-              icon={<StopOutlined />}
+              icon={<IconStop />}
               onClick={() =>
                 stopTasks(d.id)
                   .then(() => toast('已终止分析任务（已完成的分幕已保存）', 'info'))
@@ -1043,31 +1122,33 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
       {schemeItems.length === 0 ? (
         <div className="dw-panel" style={{ padding: '48px 20px', textAlign: 'center' }}>
           <Empty
-            image={<ScissorOutlined style={{ fontSize: 42, color: 'var(--text-muted)' }} />}
+            image={<IconCut style={{ fontSize: 42, color: 'var(--text-muted)' }} />}
             description={
               g?.status === 'done'
-                ? '全剧已分析完成，可立即生成 AI 智剪成片或导入参考切片溯源重拼'
-                : '尚未生成成片方案，点击下方按钮一键分析全剧并自动出片'
+                ? '全剧已分析完成，可立即新建成片：AI 智剪或导入参考切片溯源重拼'
+                : '尚未生成成片方案：可一键分析全剧自动出片，或先导入参考切片溯源重拼（无需分析）'
             }
           >
             <Space>
               {g?.status === 'done' ? (
-                <Button type="primary" icon={<ThunderboltOutlined />} onClick={() => setNewCutOpen(true)}>
+                <Button type="primary" icon={<IconBolt />} onClick={() => openNewCut()}>
                   AI 智剪第一批成片
                 </Button>
               ) : (
-                <Button
-                  type="primary"
-                  icon={<ThunderboltOutlined />}
-                  loading={g?.status === 'run' || g?.status === 'queue'}
-                  onClick={() => setAnalyzeOpen(true)}
-                >
-                  一键 AI 全局分析并出片
-                </Button>
+                <>
+                  <Button
+                    type="primary"
+                    icon={<IconBolt />}
+                    loading={g?.status === 'run' || g?.status === 'queue'}
+                    onClick={() => setAnalyzeOpen(true)}
+                  >
+                    一键 AI 全局分析并出片
+                  </Button>
+                  <Button icon={<IconImport />} onClick={() => openNewCut('replica')}>
+                    溯源重拼（无需分析）
+                  </Button>
+                </>
               )}
-              <Button icon={<ImportOutlined />} onClick={() => setReplicaOpen(true)}>
-                导入参考切片（溯源重拼）
-              </Button>
             </Space>
           </Empty>
         </div>
@@ -1173,8 +1254,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
       )}
 
       <GlobalAnalyzeModal d={d} open={analyzeOpen} onClose={() => setAnalyzeOpen(false)} />
-      <NewCutModal d={d} open={newCutOpen} onClose={() => setNewCutOpen(false)} />
-      <NewReplicaModal d={d} open={replicaOpen} onClose={() => setReplicaOpen(false)} />
+      <NewCutModal d={d} open={newCutOpen} initialMode={newCutInitialMode} onClose={() => setNewCutOpen(false)} />
       <GlobalScriptDrawer d={d} open={scriptOpen} onClose={() => setScriptOpen(false)} />
     </div>
   )
@@ -1210,7 +1290,7 @@ function ProjectList(): ReactElement {
             aria-label="搜索短剧"
           />
         )}
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
+        <Button type="primary" icon={<IconPlus />} onClick={() => setImportOpen(true)}>
           导入短剧
         </Button>
       </div>
@@ -1218,10 +1298,10 @@ function ProjectList(): ReactElement {
       {dramas.length === 0 ? (
         <div className="dw-panel" style={{ padding: '64px 20px', textAlign: 'center' }}>
           <Empty
-            image={<InboxOutlined style={{ fontSize: 44, color: 'var(--text-muted)' }} />}
+            image={<IconInbox style={{ fontSize: 44, color: 'var(--text-muted)' }} />}
             description="还没有导入短剧。选择一个包含剧集视频的目录，AI 将全自动完成分析并产出引流成片"
           >
-            <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
+            <Button type="primary" size="large" icon={<IconPlus />} onClick={() => setImportOpen(true)}>
               导入第一部短剧
             </Button>
           </Empty>
@@ -1297,7 +1377,7 @@ function ProjectList(): ReactElement {
                   </Button>
                   {st !== 'done' && (
                     <Button
-                      icon={<ThunderboltOutlined />}
+                      icon={<IconBolt />}
                       disabled={st === 'run' || st === 'queue'}
                       onClick={() =>
                         autoAnalyze(d.id, undefined, undefined, 3)
@@ -1319,7 +1399,7 @@ function ProjectList(): ReactElement {
                     okButtonProps={{ danger: true }}
                     onConfirm={() => removeDrama(d.id).then(() => toast(`已移除《${d.title}》`, 'info'))}
                   >
-                    <Button danger icon={<DeleteOutlined />} aria-label={`移除 ${d.title}`} />
+                    <Button danger icon={<IconTrash />} aria-label={`移除 ${d.title}`} />
                   </Popconfirm>
                 </div>
               </div>

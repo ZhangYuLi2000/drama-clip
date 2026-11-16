@@ -226,6 +226,14 @@ export interface Drama {
   cuts?: PromoCut[]
   replicas?: ReplicaTask[]
   replicaIndex?: ReplicaIndexState
+  /** 剧级自定义话题标签，统一追加到该剧所有引流发布文案末尾 */
+  publishTags?: string[]
+}
+
+export function withPublishTags(copy: string, tags?: string[]): string {
+  const suffix = (tags ?? []).filter(Boolean).join(' ')
+  if (!suffix) return copy
+  return copy ? `${copy} ${suffix}` : suffix
 }
 
 // ---------------------------------------------------------------- 爆款复刻

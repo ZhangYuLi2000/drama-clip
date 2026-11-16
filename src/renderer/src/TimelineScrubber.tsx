@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactElement, WheelEvent } from 'react'
 import { fmtSec } from './library'
-
-const MagnetIcon = (): ReactElement => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-    <path d="M6 15V6a6 6 0 0 1 12 0v9" />
-    <path d="M6 19v-2h4v2a2 2 0 0 1-4 0z" />
-    <path d="M14 19v-2h4v2a2 2 0 0 1-4 0z" />
-  </svg>
-)
+import { IconMagnet } from './icons'
 
 export interface TimelineSegment {
   key: string | number
@@ -337,7 +330,7 @@ export default function TimelineScrubber({
           aria-pressed={snapOn}
           title="拖动播放头接近段落边界时自动磁吸对齐；轻点色块直达段首"
         >
-          <MagnetIcon />
+          <IconMagnet />
           磁吸
         </button>
         {summary && <span className="dw-tl2-hint dw-mono">{summary}</span>}
@@ -434,7 +427,7 @@ export default function TimelineScrubber({
         className={`dw-tl2-tip dw-mono${tip.visible ? ' is-visible' : ''}${tip.snapped ? ' is-snapped' : ''}`}
         style={{ left: tip.x }}
       >
-        {tip.snapped && <MagnetIcon />}
+        {tip.snapped && <IconMagnet />}
         {tip.text}
       </div>
     </div>

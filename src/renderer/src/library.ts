@@ -32,6 +32,7 @@ interface LibraryState {
   rescan: (id: string) => Promise<{ added: number }>
   autoAnalyze: (dramaId: string, from?: number, to?: number, autoCutCount?: number) => Promise<void>
   getGlobalScript: (dramaId: string) => Promise<GlobalScript | null>
+  setPublishTags: (dramaId: string, tags: string[]) => Promise<void>
   generateCut: (dramaId: string, params: GenerateCutParams) => Promise<void>
   regenerateCut: (
     dramaId: string,
@@ -110,6 +111,10 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
     await get().refresh()
   },
   getGlobalScript: (dramaId) => call<GlobalScript | null>('drama:script', dramaId),
+  setPublishTags: async (dramaId, tags) => {
+    await call<string[]>('drama:publish-tags', { dramaId, tags })
+    await get().refresh()
+  },
   generateCut: async (dramaId, params) => {
     await call<null>('cut:generate', { dramaId, params })
     await get().refresh()

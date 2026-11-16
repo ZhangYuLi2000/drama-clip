@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { IconPlus, IconSearch } from './icons'
 import { Alert, Button, Drawer, Form, Input, Space, Switch, Table } from 'antd'
 import type { ScanResult } from '../../shared/types'
 import { fmtSize, useLibrary } from './library'
@@ -123,12 +123,12 @@ export default function Panels(): ReactElement {
         </>
       )}
       <Space>
-        <Button icon={<SearchOutlined />} loading={scanning} onClick={doScan}>
+        <Button icon={<IconSearch />} loading={scanning} onClick={doScan}>
           扫描目录
         </Button>
         <Button
           type="primary"
-          icon={<PlusOutlined />}
+          icon={<IconPlus />}
           loading={importing}
           disabled={!result || result.matched === 0}
           onClick={doImport}

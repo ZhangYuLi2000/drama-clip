@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { ClearOutlined, CopyOutlined, StopOutlined } from '@ant-design/icons'
+import { IconClear, IconCopy, IconStop } from '../icons'
 import { Button, Empty, Progress, Space, Tag } from 'antd'
 import type { JobKind } from '../../../shared/types'
 import { useLibrary } from '../library'
@@ -56,7 +56,7 @@ export default function Queue(): ReactElement {
           <h2 className="dw-page-title">任务队列</h2>
           <p className="dw-page-desc">实时查看媒体预处理、全局分幕分析、AI 编排与 FFmpeg 渲染日志（保留最近 500 条）。</p>
         </div>
-        <Button danger icon={<StopOutlined />} disabled={running === 0 && !job} onClick={doStop}>
+        <Button danger icon={<IconStop />} disabled={running === 0 && !job} onClick={doStop}>
           终止全部任务
         </Button>
       </div>
@@ -100,12 +100,12 @@ export default function Queue(): ReactElement {
             <Button size="small" type={errOnly ? 'primary' : 'default'} onClick={() => setErrOnly(!errOnly)}>
               只看错误
             </Button>
-            <Button size="small" icon={<CopyOutlined />} disabled={shown.length === 0} onClick={copyLogs}>
+            <Button size="small" icon={<IconCopy />} disabled={shown.length === 0} onClick={copyLogs}>
               复制日志
             </Button>
             <Button
               size="small"
-              icon={<ClearOutlined />}
+              icon={<IconClear />}
               disabled={logs.length === 0}
               onClick={() => {
                 clearLogs()

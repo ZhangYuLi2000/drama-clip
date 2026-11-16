@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { FolderOpenOutlined } from '@ant-design/icons'
+import { IconFolderOpen } from './icons'
 import { Button } from 'antd'
 import { toast } from './store'
 
@@ -32,7 +32,7 @@ export default function DirField({
       <span className="dw-dir-path" title={value}>
         {value || '未选择目录'}
       </span>
-      <Button icon={<FolderOpenOutlined />} loading={busy} onClick={pick}>
+      <Button icon={<IconFolderOpen />} loading={busy} onClick={pick}>
         选择目录
       </Button>
     </div>

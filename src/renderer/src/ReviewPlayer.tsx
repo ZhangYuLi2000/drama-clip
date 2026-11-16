@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
 import {
-  CaretRightOutlined,
-  MutedOutlined,
-  PauseOutlined,
-  RetweetOutlined,
-  SoundOutlined,
-  StepBackwardOutlined,
-  StepForwardOutlined
-} from '@ant-design/icons'
+  IconPlay,
+  IconMute,
+  IconPause,
+  IconLoop,
+  IconVolume,
+  IconPrev,
+  IconNext
+} from './icons'
 import { Button, Tag } from 'antd'
 import { fmtSec, mediaUrl } from './library'
 import TimelineScrubber from './TimelineScrubber'
@@ -349,7 +349,7 @@ export default function ReviewPlayer({
               onClick={togglePlay}
               aria-label={playing ? '暂停' : '播放'}
             >
-              {playing ? <PauseOutlined /> : <CaretRightOutlined />}
+              {playing ? <IconPause /> : <IconPlay />}
             </button>
 
             {bounds.length > 0 && (
@@ -376,7 +376,7 @@ export default function ReviewPlayer({
           <Button
             size="small"
             type="text"
-            icon={<StepBackwardOutlined />}
+            icon={<IconPrev />}
             disabled={!canPlay || bounds.length <= 1}
             onClick={() => jumpSeg(-1)}
             aria-label="上一段"
@@ -390,12 +390,12 @@ export default function ReviewPlayer({
             aria-label={playing ? '暂停' : '播放'}
             title="播放 / 暂停 (Space)"
           >
-            {playing ? <PauseOutlined /> : <CaretRightOutlined />}
+            {playing ? <IconPause /> : <IconPlay />}
           </button>
           <Button
             size="small"
             type="text"
-            icon={<StepForwardOutlined />}
+            icon={<IconNext />}
             disabled={!canPlay || bounds.length <= 1}
             onClick={() => jumpSeg(1)}
             aria-label="下一段"
@@ -405,7 +405,7 @@ export default function ReviewPlayer({
             size="small"
             type="text"
             className={loopSeg ? 'dw-ctrl-on' : undefined}
-            icon={<RetweetOutlined />}
+            icon={<IconLoop />}
             disabled={!canPlay || bounds.length === 0}
             onClick={toggleLoopSeg}
             aria-label="循环当前段"
@@ -428,7 +428,7 @@ export default function ReviewPlayer({
             <Button
               size="small"
               type="text"
-              icon={muted || volume === 0 ? <MutedOutlined /> : <SoundOutlined />}
+              icon={muted || volume === 0 ? <IconMute /> : <IconVolume />}
               onClick={() => setMuted((v) => !v)}
               aria-label={muted ? '取消静音' : '静音'}
               aria-pressed={muted}

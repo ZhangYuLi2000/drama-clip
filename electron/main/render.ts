@@ -3,6 +3,7 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import type { AsrSegment, Drama, PromoCut } from '../../src/shared/types'
+import { withPublishTags } from '../../src/shared/types'
 import { cacheDir } from './db'
 import { detectLeadingSilenceEnd, ffmpegBin, fileExists, run } from './media'
 
@@ -180,20 +181,35 @@ export async function renderPromoCut(
 
     const srt = buildCutSrt(drama, cut)
     fs.writeFileSync(srtPath, srt, 'utf8')
-    const copyTxt = [
-      `【方案名称】${cut.title} (v${cut.revision})`,
-      `【开场花字标题】${cut.hookHeadline}`,
-      `【引流发布文案】\n${cut.publishCopy}`,
-      `【核心冲突】${cut.conflictSummary}`,
-      `【剪辑师备注】${cut.directorNote}`
-    ].join('\n')
-    fs.writeFileSync(path.join(outDir, `${baseName}_文案.txt`), copyTxt, 'utf8')
+    fs.writeFileSync(path.join(outDir, `${baseName}_文案.txt`), buildCutCopyText(drama, cut), 'utf8')
 
     onProgress(100)
     onLog?.(`成片渲染完成：${output}`)
     return { output, srtPath }
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true })
+  }
+}
+
+export function buildCutCopyText(drama: Drama, cut: PromoCut): string {
+  return [
+    `【方案名称】${cut.title} (v${cut.revision})`,
+    `【开场花字标题】${cut.hookHeadline}`,
+    `【引流发布文案】\n${withPublishTags(cut.publishCopy, drama.publishTags)}`,
+    `【核心冲突】${cut.conflictSummary}`,
+    `【剪辑师备注】${cut.directorNote}`
+  ].join('\n')
+}
+
+/** 剧级标签变更后，把已渲染成片的旁挂文案文件同步为最新文案 */
+export function syncCutCopyFiles(drama: Drama): void {
+  for (const cut of drama.cuts ?? []) {
+    if (cut.status !== 'ready' || !cut.output) continue
+    try {
+      fs.writeFileSync(`${cut.output.replace(/\.mp4$/i, '')}_文案.txt`, buildCutCopyText(drama, cut), 'utf8')
+    } catch {
+      // 成片文件已被移动或删除时跳过
+    }
   }
 }
 
