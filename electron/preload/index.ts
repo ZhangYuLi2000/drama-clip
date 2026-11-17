@@ -23,6 +23,7 @@ const INVOKE_CHANNELS = [
   'narration:create',
   'narration:update',
   'narration:revoice',
+  'narration:render',
   'narration:delete',
   'narration:open-output',
   'job:stop',
