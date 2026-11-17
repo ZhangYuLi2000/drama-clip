@@ -55,6 +55,7 @@ interface LibraryState {
   createNarration: (dramaId: string, params: GenerateNarrationParams) => Promise<{ narrationId: string }>
   updateNarration: (dramaId: string, narrationId: string, patch: NarrationUpdatePatch) => Promise<void>
   revoiceNarration: (dramaId: string, narrationId: string, segmentId?: string) => Promise<void>
+  renderNarration: (dramaId: string, narrationId: string) => Promise<void>
   deleteNarration: (dramaId: string, narrationId: string) => Promise<void>
   openNarrationOutput: (file: string) => Promise<void>
   stopTasks: (dramaId?: string) => Promise<{ cleared: number }>
@@ -158,6 +159,10 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   },
   revoiceNarration: async (dramaId, narrationId, segmentId) => {
     await call<null>('narration:revoice', { dramaId, narrationId, segmentId })
+    await get().refresh()
+  },
+  renderNarration: async (dramaId, narrationId) => {
+    await call<null>('narration:render', { dramaId, narrationId })
     await get().refresh()
   },
   deleteNarration: async (dramaId, narrationId) => {

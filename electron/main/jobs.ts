@@ -8,7 +8,7 @@ import { runGlobalAnalysis, type GlobalRange } from './global'
 import { detectShots, fileExists, makeThumb, probe } from './media'
 import { cleanupCutFiles, renderPromoCut } from './render'
 import { runReplicaTask } from './replica-engine'
-import { generateNarrationScript, voiceNarrationSegments } from './narration'
+import { generateNarrationScript, renderNarrationCut, voiceNarrationSegments } from './narration'
 import { getCutStyleMeta, getEffectiveTextModel, getSettings, getTtsSettings } from './settings'
 
 interface Job {
@@ -27,7 +27,7 @@ interface Job {
   regenStyle?: CutStyle
   regenTargetSec?: number
   narrationId?: string
-  narrationMode?: 'full' | 'revoice'
+  narrationMode?: 'full' | 'revoice' | 'render'
   segmentId?: string
   narrationParams?: GenerateNarrationParams
 }
@@ -219,7 +219,7 @@ export function enqueueReplica(dramaId: string, replicaId: string, recutOnly = f
 export function enqueueNarration(
   dramaId: string,
   narrationId: string,
-  mode: 'full' | 'revoice' = 'full',
+  mode: 'full' | 'revoice' | 'render' = 'full',
   segmentId?: string,
   params?: GenerateNarrationParams
 ): boolean {
@@ -228,13 +228,14 @@ export function enqueueNarration(
   if (!drama || !cut) return false
   if (queue.some((j) => j.kind === 'narration' && j.narrationId === narrationId)) return false
   if (current && current.kind === 'narration' && current.narrationId === narrationId) return false
-  cut.status = mode === 'full' ? 'generating' : 'voicing'
+  cut.status = mode === 'full' ? 'generating' : mode === 'render' ? 'rendering' : 'voicing'
   cut.pct = 0
   cut.error = undefined
   saveLibrary()
   emit()
   queue.push({ kind: 'narration', dramaId, episodeId: '', narrationId, narrationMode: mode, segmentId, narrationParams: params })
-  jobLog('info', `加入队列：${mode === 'full' ? 'AI 解说成片' : '解说重配'}「${cut.title || '新解说'}」（${drama.title}）`)
+  const modeText = mode === 'full' ? 'AI 解说成片' : mode === 'render' ? '解说视频渲染' : '解说重配'
+  jobLog('info', `加入队列：${modeText}「${cut.title || '新解说'}」（${drama.title}）`)
   void pump()
   return true
 }
@@ -263,7 +264,7 @@ export function stopTasks(dramaId?: string): { cleared: number } {
       }
     }
     for (const nc of d.narrations ?? []) {
-      if (nc.status === 'generating' || nc.status === 'voicing') {
+      if (nc.status === 'generating' || nc.status === 'voicing' || nc.status === 'rendering') {
         nc.status = nc.segments.some((s) => s.status === 'ready') ? 'ready' : 'fail'
         nc.pct = undefined
         nc.error = '已手动终止'
@@ -646,53 +647,94 @@ async function pump(): Promise<void> {
       const drama = findDrama(job.dramaId)
       const cut = drama?.narrations?.find((c) => c.id === job.narrationId)
       if (!drama || !cut) continue
-      const isRevoice = job.narrationMode === 'revoice'
-      const label = isRevoice ? `解说重配「${cut.title}」` : `AI 解说成片《${drama.title}》`
+      const mode = job.narrationMode ?? 'full'
+      const label =
+        mode === 'revoice'
+          ? `解说重配「${cut.title}」`
+          : mode === 'render'
+            ? `渲染解说视频「${cut.title}」`
+            : `AI 解说成片《${drama.title}》`
       current = { kind: 'narration', dramaId: job.dramaId, episodeId: '', narrationId: cut.id, label, pct: 0 }
-      cut.status = isRevoice ? 'voicing' : 'generating'
+      cut.status = mode === 'full' ? 'generating' : mode === 'render' ? 'rendering' : 'voicing'
       cut.pct = 0
       cut.error = undefined
       saveLibrary()
       jobLog('info', `开始：${label}`)
       emit()
       try {
-        const ttsCfg = getTtsSettings()
-        if (!isRevoice) {
-          const cfg = getEffectiveTextModel()
-          const params = job.narrationParams ?? { targetSec: cut.targetSec }
-          const r = await generateNarrationScript(drama, params, cfg, signal)
-          cut.title = r.title
-          cut.hookHeadline = r.hookHeadline
-          cut.publishCopy = r.publishCopy
-          cut.segments = r.segments
-          cut.tokens = r.tokens
-          cut.status = 'voicing'
-          cut.pct = 5
-          saveLibrary()
-          jobLog('info', `解说稿生成完成：「${r.title}」${r.segments.length} 段（${r.tokens} tokens），开始逐段配音`)
-          emit()
-        }
-        await voiceNarrationSegments(
-          drama.id,
-          cut,
-          ttsCfg,
-          (pct) => {
-            cut.pct = isRevoice ? pct : 5 + Math.round(pct * 0.95)
-            if (current) current.pct = cut.pct
+        if (mode !== 'render') {
+          const ttsCfg = getTtsSettings()
+          if (mode === 'full') {
+            const cfg = getEffectiveTextModel()
+            const params = job.narrationParams ?? { targetSec: cut.targetSec }
+            const r = await generateNarrationScript(drama, params, cfg, signal)
+            cut.title = r.title
+            cut.hookHeadline = r.hookHeadline
+            cut.publishCopy = r.publishCopy
+            cut.segments = r.segments
+            cut.tokens = r.tokens
+            cut.status = 'voicing'
+            cut.pct = 5
             saveLibrary()
+            jobLog('info', `解说稿生成完成：「${r.title}」${r.segments.length} 段（${r.tokens} tokens），开始逐段配音`)
+            emit()
+          }
+          await voiceNarrationSegments(
+            drama.id,
+            cut,
+            ttsCfg,
+            (pct) => {
+              cut.pct = mode === 'revoice' ? Math.round(pct * 0.55) : 5 + Math.round(pct * 0.5)
+              if (current) current.pct = cut.pct
+              saveLibrary()
+              emit()
+            },
+            (msg) => jobLog('info', msg),
+            signal,
+            mode === 'revoice' ? job.segmentId : undefined
+          )
+          if (!cut.segments.some((s) => s.status === 'ready')) {
+            throw new Error('所有解说段配音失败')
+          }
+        }
+
+        cut.status = 'rendering'
+        cut.pct = mode === 'render' ? 0 : 55
+        if (current) current.pct = cut.pct
+        saveLibrary()
+        jobLog('info', `开始合成解说视频「${cut.title}」（${cut.ratio ?? '9:16'}）`)
+        emit()
+
+        const oldOutput = cut.output
+        const oldSrt = cut.srtPath
+        const { output, srtPath } = await renderNarrationCut(
+          drama,
+          cut,
+          (pct) => {
+            cut.pct = mode === 'render' ? pct : 55 + Math.round(pct * 0.45)
+            if (current) current.pct = cut.pct
             emit()
           },
           (msg) => jobLog('info', msg),
-          signal,
-          isRevoice ? job.segmentId : undefined
+          signal
         )
-        cut.status = cut.segments.some((s) => s.status === 'ready') ? 'ready' : 'fail'
+        if (oldOutput && oldOutput !== output) {
+          cleanupCutFiles(oldOutput, oldSrt && oldSrt !== srtPath ? oldSrt : undefined)
+        } else if (oldSrt && oldSrt !== srtPath) {
+          fs.rmSync(oldSrt, { force: true })
+        }
+        cut.output = output
+        cut.srtPath = srtPath
+        cut.status = 'ready'
         cut.pct = 100
-        cut.error = cut.status === 'fail' ? '所有解说段配音失败' : undefined
+        cut.error = undefined
         cut.updatedAt = Date.now()
         saveLibrary()
         doneCount++
-        jobLog('info', `${label} 完成：${cut.segments.filter((s) => s.status === 'ready').length}/${cut.segments.length} 段配音 · ${cut.totalAudioSec ?? 0}s`)
+        jobLog(
+          'info',
+          `${label} 完成：${cut.segments.filter((s) => s.status === 'ready').length}/${cut.segments.length} 段 · ${cut.totalAudioSec ?? 0}s`
+        )
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         cut.status = cut.segments.some((s) => s.status === 'ready') ? 'ready' : 'fail'

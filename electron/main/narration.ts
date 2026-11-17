@@ -1,10 +1,12 @@
+import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import type { Drama, GenerateNarrationParams, GlobalScript, ModelCfg, NarrationCut, NarrationSegment, TtsCfg } from '../../src/shared/types'
+import { withPublishTags } from '../../src/shared/types'
 import { cacheDir } from './db'
 import { readGlobalScript } from './global'
 import { extractJson, streamChat, type StreamResult } from './llm'
-import { ffmpegBin, run } from './media'
+import { ffmpegBin, fileExists, probe, run } from './media'
 import { synthesizeSpeech, ttsCacheKey } from './tts'
 
 const CHARS_PER_SEC = 4.5
@@ -191,4 +193,205 @@ export async function voiceNarrationSegments(
   const ready = cut.segments.filter((s) => s.status === 'ready' && s.audioFile)
   cut.totalAudioSec = Math.round(ready.reduce((a, s) => a + (s.durationSec || 0), 0) * 10) / 10
   cut.fullAudio = await concatFullAudio(dir, ready.map((s) => s.audioFile!), signal)
+}
+
+function safeName(s: string): string {
+  return s.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || '解说成片'
+}
+
+function stamp(): string {
+  const d = new Date()
+  const p = (x: number): string => String(x).padStart(2, '0')
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+}
+
+function fmtSrtTime(sec: number): string {
+  const ms = Math.max(0, Math.round(sec * 1000))
+  const h = Math.floor(ms / 3_600_000)
+  const m = Math.floor((ms % 3_600_000) / 60_000)
+  const s = Math.floor((ms % 60_000) / 1000)
+  const rem = ms % 1000
+  const p2 = (n: number): string => String(n).padStart(2, '0')
+  const p3 = (n: number): string => String(n).padStart(3, '0')
+  return `${p2(h)}:${p2(m)}:${p2(s)},${p3(rem)}`
+}
+
+/** 按标点拆分解说词并按字符数等比分配时间轴，生成可直接导入剪映的 .srt 字幕 */
+export function buildNarrationSrt(segments: NarrationSegment[]): string {
+  const entries: { start: number; end: number; text: string }[] = []
+  let offset = 0
+  for (const seg of segments) {
+    if (seg.status !== 'ready' || !seg.audioFile) continue
+    const dur = Math.max(0.2, seg.durationSec || 0)
+    const rawText = seg.text.trim()
+    if (!rawText) {
+      offset += dur
+      continue
+    }
+    const clauses = rawText
+      .split(/(?<=[，。！？；：、,.!?;:])/)
+      .map((s) => s.replace(/[，。！？；：、,.!?;:]+$/g, '').trim())
+      .filter(Boolean)
+    const parts = clauses.length > 0 ? clauses : [rawText]
+    const totalChars = parts.reduce((a, p) => a + p.length, 0) || 1
+    let cur = offset
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const span = i === parts.length - 1 ? offset + dur - cur : (dur * part.length) / totalChars
+      const end = Math.max(cur + 0.15, cur + span)
+      entries.push({ start: cur, end, text: part })
+      cur = end
+    }
+    offset += dur
+  }
+  return entries
+    .map((item, idx) => `${idx + 1}\n${fmtSrtTime(item.start)} --> ${fmtSrtTime(item.end)}\n${item.text}\n`)
+    .join('\n')
+}
+
+export function buildNarrationCopyText(drama: Drama, cut: NarrationCut): string {
+  const segLines = cut.segments.map(
+    (s, i) => `${i + 1}. [${s.role}] 第${s.epN}集 ${s.in.toFixed(1)}-${s.out.toFixed(1)}s (${(s.durationSec ?? 0).toFixed(1)}s)\n${s.text}`
+  )
+  return [
+    `【解说标题】${cut.title} (v${cut.revision})`,
+    `【开场花字标题】${cut.hookHeadline}`,
+    `【引流发布文案】\n${withPublishTags(cut.publishCopy, drama.publishTags)}`,
+    `【配音参数】音色 ${cut.voice} · 语速 ${cut.rate}x · 画幅 ${cut.ratio ?? '9:16'}`,
+    `【分段解说词】\n${segLines.join('\n\n')}`
+  ].join('\n\n')
+}
+
+/** 将已配音的解说分段与对应剧集画面对齐合成为纯净 MP4（无硬字幕/无 BGM），并同步输出 .srt 与 _文案.txt。 */
+export async function renderNarrationCut(
+  drama: Drama,
+  cut: NarrationCut,
+  onProgress: (pct: number) => void,
+  onLog?: (msg: string) => void,
+  signal?: AbortSignal
+): Promise<{ output: string; srtPath: string }> {
+  const readySegs = cut.segments.filter((s) => s.status === 'ready' && s.audioFile && fileExists(s.audioFile))
+  if (readySegs.length === 0) throw new Error('没有已配音的解说段，无法渲染视频')
+
+  const ratio = cut.ratio ?? '9:16'
+  const target = ratio === '9:16' ? { w: 1080, h: 1920 } : { w: 1920, h: 1080 }
+  const baseVf = `scale=${target.w}:${target.h}:force_original_aspect_ratio=decrease,pad=${target.w}:${target.h}:(ow-iw)/2:(oh-ih)/2,setsar=1`
+  const workDir = path.join(cacheDir(), 'narration-render', `${cut.id}-${Date.now()}`)
+  fs.mkdirSync(workDir, { recursive: true })
+  const segFiles: string[] = []
+
+  try {
+    for (let i = 0; i < readySegs.length; i++) {
+      if (signal?.aborted) throw new Error('已取消')
+      const seg = readySegs[i]
+      const ep = drama.episodes.find((e) => e.id === seg.epId || e.n === seg.epN)
+      if (!ep) throw new Error(`第 ${i + 1} 段找不到第 ${seg.epN} 集`)
+      if (!fileExists(ep.file)) throw new Error(`第 ${seg.epN} 集原文件不存在：${ep.file}`)
+
+      let audioDur = seg.durationSec && seg.durationSec > 0.1 ? seg.durationSec : 0
+      if (!audioDur) {
+        const info = await probe(seg.audioFile!).catch(() => null)
+        audioDur = info?.duration ? Math.round(info.duration * 100) / 100 : 3
+        seg.durationSec = audioDur
+      }
+
+      const epDur = ep.duration && ep.duration > 0 ? ep.duration : seg.out
+      let clipIn = Math.max(0, seg.in)
+      let vf = baseVf
+      if (epDur - clipIn < audioDur) {
+        if (epDur >= audioDur) {
+          clipIn = Math.max(0, epDur - audioDur)
+        } else {
+          clipIn = 0
+          const factor = Math.min(4, audioDur / Math.max(0.5, epDur))
+          vf = `setpts=${factor.toFixed(4)}*PTS,${baseVf}`
+        }
+      }
+
+      const fadeOutStart = Math.max(0, audioDur - 0.04).toFixed(3)
+      const af = `loudnorm=I=-14:TP=-1.5:LRA=11,afade=t=in:st=0:d=0.02,afade=t=out:st=${fadeOutStart}:d=0.04`
+      const tmpSeg = path.join(workDir, `seg-${i}.mp4`)
+
+      await run(
+        ffmpegBin(),
+        [
+          '-y',
+          '-ss',
+          clipIn.toFixed(3),
+          '-i',
+          ep.file,
+          '-i',
+          seg.audioFile!,
+          '-map',
+          '0:v:0',
+          '-map',
+          '1:a:0',
+          '-t',
+          audioDur.toFixed(3),
+          '-vf',
+          vf,
+          '-af',
+          af,
+          '-r',
+          '30',
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          '19',
+          '-pix_fmt',
+          'yuv420p',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '160k',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+          tmpSeg
+        ],
+        10 * 60_000,
+        8000,
+        signal
+      )
+      segFiles.push(tmpSeg)
+      onProgress(Math.round(((i + 1) / readySegs.length) * 90))
+      onLog?.(`渲染解说片段 ${i + 1}/${readySegs.length}（第 ${seg.epN} 集 ${clipIn.toFixed(1)}s + ${audioDur.toFixed(1)}s）`)
+    }
+
+    cut.totalAudioSec = Math.round(readySegs.reduce((a, s) => a + (s.durationSec || 0), 0) * 10) / 10
+
+    const listFile = path.join(workDir, 'list.txt')
+    fs.writeFileSync(listFile, segFiles.map((f) => `file '${f.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'))
+
+    let outDir = path.join(drama.dir, '成片')
+    try {
+      fs.mkdirSync(outDir, { recursive: true })
+    } catch {
+      outDir = path.join(app.getPath('userData'), 'renders', drama.id)
+      fs.mkdirSync(outDir, { recursive: true })
+    }
+    const baseName = `${safeName(cut.title)}_解说_v${cut.revision}_${stamp()}`
+    const output = path.join(outDir, `${baseName}.mp4`)
+    const srtPath = path.join(outDir, `${baseName}.srt`)
+
+    await run(
+      ffmpegBin(),
+      ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', output],
+      10 * 60_000,
+      8000,
+      signal
+    )
+
+    fs.writeFileSync(srtPath, buildNarrationSrt(readySegs), 'utf8')
+    fs.writeFileSync(path.join(outDir, `${baseName}_文案.txt`), buildNarrationCopyText(drama, cut), 'utf8')
+
+    onProgress(100)
+    onLog?.(`解说成片渲染完成：${output}`)
+    return { output, srtPath }
+  } finally {
+    fs.rmSync(workDir, { recursive: true, force: true })
+  }
 }

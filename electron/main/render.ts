@@ -201,12 +201,22 @@ export function buildCutCopyText(drama: Drama, cut: PromoCut): string {
   ].join('\n')
 }
 
+import { buildNarrationCopyText } from './narration'
+
 /** 剧级标签变更后，把已渲染成片的旁挂文案文件同步为最新文案 */
 export function syncCutCopyFiles(drama: Drama): void {
   for (const cut of drama.cuts ?? []) {
     if (cut.status !== 'ready' || !cut.output) continue
     try {
       fs.writeFileSync(`${cut.output.replace(/\.mp4$/i, '')}_文案.txt`, buildCutCopyText(drama, cut), 'utf8')
+    } catch {
+      // 成片文件已被移动或删除时跳过
+    }
+  }
+  for (const nc of drama.narrations ?? []) {
+    if (nc.status !== 'ready' || !nc.output) continue
+    try {
+      fs.writeFileSync(`${nc.output.replace(/\.mp4$/i, '')}_文案.txt`, buildNarrationCopyText(drama, nc), 'utf8')
     } catch {
       // 成片文件已被移动或删除时跳过
     }

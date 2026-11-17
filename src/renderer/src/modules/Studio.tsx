@@ -258,6 +258,7 @@ function NewCutModal({
   const [count, setCount] = useState(1)
   const [prompt, setPrompt] = useState('')
   const [narrationTarget, setNarrationTarget] = useState(120)
+  const [narrationRatio, setNarrationRatio] = useState<'9:16' | '16:9'>('9:16')
   const [narrationPrompt, setNarrationPrompt] = useState('')
   const [refVideoPath, setRefVideoPath] = useState('')
   const [refCopy, setRefCopy] = useState('')
@@ -281,9 +282,12 @@ function NewCutModal({
     if (mode === 'replica') return
     if (mode === 'narration') {
       setBusy(true)
-      createNarration(d.id, { targetSec: narrationTarget, prompt: narrationPrompt.trim() || undefined })
-        .then(() => {
-          toast('已加入解说稿生成队列')
+      createNarration(d.id, { targetSec: narrationTarget, ratio: narrationRatio, prompt: narrationPrompt.trim() || undefined })
+        .then(({ narrationId }) => {
+          useStore.getState().selectCut(null)
+          useStore.getState().selectReplica(null)
+          useStore.getState().selectNarration(narrationId)
+          toast('已加入解说成片队列（写稿 → 配音 → 合成视频）')
           setNarrationPrompt('')
           onClose()
         })
@@ -334,7 +338,7 @@ function NewCutModal({
         mode === 'replica'
           ? '开始重拼'
           : mode === 'narration'
-            ? '生成解说稿'
+            ? '生成解说成片'
             : mode === 'hook-matrix'
               ? `生成 ${Math.max(2, count)} 条测试`
               : mode === 'viral-clone'
@@ -362,7 +366,7 @@ function NewCutModal({
         {mode === 'independent' && 'AI 自动挑选高冲突主线，生成独立引流切片。'}
         {mode === 'hook-matrix' && '同一条主线故事，自动搭配多个不同的前 3 秒开场用于投流测试。'}
         {mode === 'viral-clone' && '上传参考视频或套用爆款结构，AI 提取节拍后 1:1 复刻到本剧。'}
-        {mode === 'narration' && 'AI 通读全剧写解说稿，龙书音色逐段配音，可编辑文案与试听（视频合成即将推出）。'}
+        {mode === 'narration' && 'AI 通读全剧写解说稿，龙书音色逐段配音，并自动合成为带字幕与文案的纯净解说视频。'}
         {mode === 'replica' &&
           '导入本剧剪辑产物作参考，逐帧溯源出处后用原片原画幅、原生帧率、原声对白重拼干净成片（无水印/无字幕/无镜像）。'}
         {!analyzed && ' 全局分析未完成，前三种智剪模式暂不可用；溯源重拼不依赖分析。'}
@@ -506,7 +510,7 @@ function NewCutModal({
 
       {mode === 'narration' && (
         <>
-          <div className="dw-field-grid is-compact" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+          <div className="dw-field-grid is-compact" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
             <div className="dw-field">
               <span className="dw-field-label">目标时长</span>
               <div className="dw-field-control">
@@ -514,6 +518,19 @@ function NewCutModal({
                   value={narrationTarget}
                   onChange={setNarrationTarget}
                   options={[60, 90, 120, 180, 300, 480].map((v) => ({ value: v, label: `${v / 60} 分钟` }))}
+                />
+              </div>
+            </div>
+            <div className="dw-field">
+              <span className="dw-field-label">画幅</span>
+              <div className="dw-field-control">
+                <Select
+                  value={narrationRatio}
+                  onChange={setNarrationRatio}
+                  options={[
+                    { value: '9:16', label: '9:16 竖屏' },
+                    { value: '16:9', label: '16:9 横屏' }
+                  ]}
                 />
               </div>
             </div>
@@ -1028,6 +1045,7 @@ const NARRATION_STATUS_LABEL: Record<NarrationCut['status'], string> = {
   draft: '待生成',
   generating: '写稿中',
   voicing: '配音中',
+  rendering: '渲染中',
   ready: '已就绪',
   fail: '失败'
 }
@@ -1038,6 +1056,8 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
   const selectCut = useStore((s) => s.selectCut)
   const selectedReplicaId = useStore((s) => s.selectedReplicaId)
   const selectReplica = useStore((s) => s.selectReplica)
+  const selectedNarrationId = useStore((s) => s.selectedNarrationId)
+  const selectNarration = useStore((s) => s.selectNarration)
   const rescan = useLibrary((s) => s.rescan)
   const stopTasks = useLibrary((s) => s.stopTasks)
   const styles = useLibrary((s) => s.settings?.styles ?? DEFAULT_CUT_STYLES)
@@ -1055,28 +1075,37 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
 
   const cuts = d.cuts ?? []
   const replicas = d.replicas ?? []
+  const narrations = d.narrations ?? []
   const g = d.global
 
   const schemeItems = useMemo(() => {
     const list = [
       ...cuts.map((c) => ({ kind: 'cut' as const, id: c.id, createdAt: c.createdAt, cut: c })),
+      ...narrations.map((n) => ({ kind: 'narration' as const, id: n.id, createdAt: n.createdAt, narration: n })),
       ...replicas.map((r) => ({ kind: 'replica' as const, id: r.id, createdAt: r.createdAt, replica: r }))
     ]
     list.sort((a, b) => b.createdAt - a.createdAt)
     return list
-  }, [cuts, replicas])
+  }, [cuts, narrations, replicas])
 
+  const activeNarration =
+    (selectedNarrationId ? narrations.find((n) => n.id === selectedNarrationId) : undefined) ??
+    (!selectedCutId && !selectedReplicaId && schemeItems[0]?.kind === 'narration' ? schemeItems[0].narration : null)
   const activeReplica =
-    (selectedReplicaId ? replicas.find((r) => r.id === selectedReplicaId) : undefined) ??
-    (!selectedCutId && schemeItems[0]?.kind === 'replica' ? schemeItems[0].replica : null)
+    !activeNarration
+      ? (selectedReplicaId ? replicas.find((r) => r.id === selectedReplicaId) : undefined) ??
+        (!selectedCutId && schemeItems[0]?.kind === 'replica' ? schemeItems[0].replica : null)
+      : null
   const activeCut =
-    !activeReplica
+    !activeNarration && !activeReplica
       ? (selectedCutId ? cuts.find((c) => c.id === selectedCutId) : undefined) ??
         (schemeItems[0]?.kind === 'cut' ? schemeItems[0].cut : cuts[0] ?? null)
       : null
 
   const readyCount =
-    cuts.filter((c) => c.status === 'ready').length + replicas.filter((r) => r.status === 'ready').length
+    cuts.filter((c) => c.status === 'ready').length +
+    narrations.filter((n) => n.status === 'ready').length +
+    replicas.filter((r) => r.status === 'ready').length
 
   const doRescan = (): void => {
     setRescanning(true)
@@ -1236,6 +1265,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
                       key={c.id}
                       className={`dw-cut-item${isActive ? ' is-active' : ''}`}
                       onClick={() => {
+                        selectNarration(null)
                         selectReplica(null)
                         selectCut(c.id)
                       }}
@@ -1272,6 +1302,46 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
                   )
                 }
 
+                if (item.kind === 'narration') {
+                  const nc = item.narration
+                  const isActive = activeNarration?.id === nc.id
+                  const running = nc.status === 'generating' || nc.status === 'voicing' || nc.status === 'rendering'
+                  return (
+                    <button
+                      type="button"
+                      key={nc.id}
+                      className={`dw-cut-item${isActive ? ' is-active' : ''}`}
+                      onClick={() => {
+                        selectCut(null)
+                        selectReplica(null)
+                        selectNarration(nc.id)
+                      }}
+                    >
+                      <div className="dw-cut-item-top">
+                        <span className="dw-cut-item-title" style={{ marginTop: 0, flex: 1 }} title={nc.title}>
+                          {nc.title || '新解说'}
+                        </span>
+                        <Tag
+                          color={nc.status === 'ready' ? 'success' : nc.status === 'fail' ? 'error' : running ? 'processing' : 'default'}
+                          style={{ marginInlineEnd: 0 }}
+                        >
+                          {NARRATION_STATUS_LABEL[nc.status]}
+                          {running ? ` ${nc.pct ?? 0}%` : ''}
+                        </Tag>
+                      </div>
+                      <div className="dw-cut-item-meta">
+                        <Tag color="cyan" style={{ marginInlineEnd: 0 }}>
+                          解说
+                        </Tag>
+                        <span className="dw-spacer" />
+                        <span className="dw-sub dw-mono">
+                          {nc.segments.length}段 · {fmtSec(nc.totalAudioSec ?? 0)}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                }
+
                 const r = item.replica
                 const isActive = activeReplica?.id === r.id
                 const running = r.status !== 'ready' && r.status !== 'fail' && r.status !== 'queue'
@@ -1281,6 +1351,7 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
                     key={r.id}
                     className={`dw-cut-item${isActive ? ' is-active' : ''}`}
                     onClick={() => {
+                      selectNarration(null)
                       selectCut(null)
                       selectReplica(r.id)
                     }}
@@ -1312,7 +1383,13 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
             </div>
           </aside>
 
-          {activeReplica ? <ReplicaWorkspace d={d} task={activeReplica} /> : activeCut ? <CutWorkspace d={d} cut={activeCut} /> : null}
+          {activeNarration ? (
+            <NarrationWorkspace d={d} cut={activeNarration} />
+          ) : activeReplica ? (
+            <ReplicaWorkspace d={d} task={activeReplica} />
+          ) : activeCut ? (
+            <CutWorkspace d={d} cut={activeCut} />
+          ) : null}
         </div>
       )}
 

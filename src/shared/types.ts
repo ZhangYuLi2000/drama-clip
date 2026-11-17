@@ -224,7 +224,7 @@ export interface GenerateCutParams {
 
 // ---------------------------------------------------------------- 解说成片
 
-export type NarrationStatus = 'draft' | 'generating' | 'voicing' | 'ready' | 'fail'
+export type NarrationStatus = 'draft' | 'generating' | 'voicing' | 'rendering' | 'ready' | 'fail'
 export type NarrationSegStatus = 'pending' | 'voicing' | 'ready' | 'fail'
 
 export interface NarrationSegment {
@@ -250,6 +250,7 @@ export interface NarrationCut {
   voice: string
   ttsModel: string
   rate: number
+  ratio?: '9:16' | '16:9'
   targetSec: number
   segments: NarrationSegment[]
   status: NarrationStatus
@@ -257,6 +258,8 @@ export interface NarrationCut {
   error?: string
   fullAudio?: string
   totalAudioSec?: number
+  output?: string
+  srtPath?: string
   tokens?: number
   revision: number
   createdAt: number
@@ -265,6 +268,7 @@ export interface NarrationCut {
 
 export interface GenerateNarrationParams {
   targetSec: number
+  ratio?: '9:16' | '16:9'
   voice?: string
   rate?: number
   prompt?: string

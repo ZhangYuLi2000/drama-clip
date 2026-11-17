@@ -155,6 +155,7 @@ export function registerMediaProtocol(): void {
         (d.cuts ?? []).some((c) => c.output && path.normalize(c.output) === norm) ||
         (d.narrations ?? []).some(
           (nc) =>
+            (nc.output && path.normalize(nc.output) === norm) ||
             (nc.fullAudio && path.normalize(nc.fullAudio) === norm) ||
             nc.segments.some((s) => s.audioFile && path.normalize(s.audioFile) === norm)
         ) ||
@@ -284,6 +285,10 @@ export function registerIpc(): void {
     const target = lib.dramas[idx]
     for (const cut of target.cuts ?? []) {
       cleanupCutFiles(cut.output, cut.srtPath)
+    }
+    for (const nc of target.narrations ?? []) {
+      cleanupCutFiles(nc.output, nc.srtPath)
+      fs.rmSync(narrationDir(dramaId, nc.id), { recursive: true, force: true })
     }
     for (const ep of target.episodes) {
       if (ep.thumb) fs.rmSync(ep.thumb, { force: true })
@@ -428,6 +433,7 @@ export function registerIpc(): void {
       voice: params.voice?.trim() || tts.voice,
       ttsModel: tts.model,
       rate: params.rate ?? tts.rate,
+      ratio: params.ratio === '16:9' ? '16:9' : '9:16',
       targetSec,
       segments: [],
       status: 'draft',
@@ -488,6 +494,15 @@ export function registerIpc(): void {
     return ok(null)
   })
 
+  ipcMain.handle('narration:render', (_e, payload: unknown) => {
+    const { dramaId, narrationId } = (payload ?? {}) as { dramaId?: string; narrationId?: string }
+    if (typeof dramaId !== 'string' || typeof narrationId !== 'string') return fail('参数错误')
+    if (!enqueueNarration(dramaId, narrationId, 'render')) {
+      return fail('解说方案不存在或已在队列中')
+    }
+    return ok(null)
+  })
+
   ipcMain.handle('narration:delete', (_e, payload: unknown) => {
     const { dramaId, narrationId } = (payload ?? {}) as { dramaId?: string; narrationId?: string }
     if (typeof dramaId !== 'string' || typeof narrationId !== 'string') return fail('参数错误')
@@ -495,6 +510,8 @@ export function registerIpc(): void {
     if (!drama || !drama.narrations) return fail('解说方案不存在')
     const idx = drama.narrations.findIndex((c) => c.id === narrationId)
     if (idx < 0) return fail('解说方案不存在')
+    const nc = drama.narrations[idx]
+    cleanupCutFiles(nc.output, nc.srtPath)
     fs.rmSync(narrationDir(dramaId, narrationId), { recursive: true, force: true })
     drama.narrations.splice(idx, 1)
     saveLibrary()
