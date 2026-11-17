@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
@@ -5,7 +6,7 @@ import type { Drama, GenerateNarrationParams, GlobalScript, ModelCfg, NarrationC
 import { withPublishTags } from '../../src/shared/types'
 import { cacheDir } from './db'
 import { readGlobalScript } from './global'
-import { extractJson, streamChat, type StreamResult } from './llm'
+import { extractJson, isGoogleNative, streamChat, streamNative, type StreamResult } from './llm'
 import { ffmpegBin, fileExists, probe, run } from './media'
 import { synthesizeSpeech, ttsCacheKey } from './tts'
 
@@ -38,7 +39,7 @@ function buildDigest(drama: Drama, script: GlobalScript, eps?: string): string {
     const s = sumByN.get(e.n)
     const dur = e.duration || 0
     lines.push(`\n第${e.n}集（时长${dur.toFixed(1)}s）梗概：${s?.summary || e.summary || '（无）'}`)
-    const cands = [...(e.candidates || [])].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 2)
+    const cands = [...(e.candidates || [])].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 4)
     for (const c of cands) {
       lines.push(`  画面[${c.in.toFixed(1)}-${c.out.toFixed(1)}s] 分${c.score}《${c.title}》 场景:${c.scene || ''} 金句:${c.quote || ''} 人物:${(c.characters || []).join('/')}`)
     }
@@ -46,17 +47,24 @@ function buildDigest(drama: Drama, script: GlobalScript, eps?: string): string {
   return lines.join('\n')
 }
 
-function buildPrompt(digest: string, targetSec: number, userPrompt?: string): string {
-  const budget = Math.round(targetSec * CHARS_PER_SEC)
+function buildPrompt(digest: string, targetSec: number, rate: number, userPrompt?: string): string {
+  const effectiveRate = Math.max(0.5, Math.min(2, rate || 1))
+  const charsPerSec = CHARS_PER_SEC * effectiveRate
+  const budget = Math.round(targetSec * charsPerSec)
+  const segMin = Math.max(5, Math.round(targetSec / 14))
+  const segMax = Math.max(segMin + 4, Math.round(targetSec / 7))
+  const perSegMin = Math.max(25, Math.round((budget / segMax) * 0.8))
+  const perSegMax = Math.min(95, Math.max(perSegMin + 15, Math.round((budget / segMin) * 1.15)))
   const parts = [
     digest,
     '\n=== 任务 ===',
     '为这部短剧写一条「主线解说」短视频文案（连贯的第三人称解说旁白，不是混剪标题），锁定故事主线所述的那条冲突线，按剧情时间顺序讲清楚。',
-    `目标成片总时长约 ${targetSec} 秒；解说语速约 ${CHARS_PER_SEC} 字/秒，所以解说词总字数约 ${budget} 字（允许 ±15%）。`,
+    `目标成片总时长约 ${targetSec} 秒；当前配音语速约 ${charsPerSec.toFixed(1)} 字/秒，所以解说词总字数约 ${budget} 字（允许 ±15%）。`,
     '结构：钩子（开场3秒抓人）→ 剧情（起因/升级）→ 高潮 → 悬念/引导（结尾留钩子引导看正片，不要把结局彻底讲死）。',
-    '分成 8-16 段，每段解说词 30-80 字，口语化、有节奏感和悬念感，像抖音影视解说那样讲故事。',
-    '每段必须绑定一个画面：优先从上面「高光画面库」里选 epN + in/out（可微调起止），画面内容要能支撑这段解说；in/out 必须落在该集时长内、out>in。',
-    '只依据给出的剧情写作，不要编造人物或情节；人物用真实姓名。',
+    `分成 ${segMin}-${segMax} 段，每段解说词约 ${perSegMin}-${perSegMax} 字，口语化、有节奏感和悬念感，像抖音影视解说那样讲故事。`,
+    '解说词必须是纯口播文本：严禁出现【】（）等舞台提示或动作标注，不要用省略号（……）或特殊符号；数字、金额、比例请写成中文口语（如“一百万”而非“100w”）。',
+    `每段必须绑定一个画面：优先从上面「高光画面库」里选 epN + in/out（可微调起止），尽量让画面时长接近该段口播时长（约 字数 ÷ ${charsPerSec.toFixed(1)} 秒），且 in/out 必须落在该集时长内、out>in。`,
+    '只依据给出的剧情写作，不要编造人物或情节；人物用真实姓名，epN 必须来自上方分集列表。',
     '只输出一个 JSON 对象，不要 markdown 包裹：',
     '{"title":"解说标题≤20字","hookHeadline":"开场花字≤12字","segments":[{"text":"解说词","epN":集数,"in":起始秒,"out":结束秒,"role":"钩子/剧情/高潮/悬念/引导","reason":"≤30字画面理由"}],"publishCopy":"引流发布文案≤80字"}'
   ]
@@ -76,34 +84,47 @@ export async function generateNarrationScript(
   drama: Drama,
   params: GenerateNarrationParams,
   cfg: ModelCfg,
+  rate = 1,
   signal?: AbortSignal
 ): Promise<NarrationScriptResult> {
   const script = readGlobalScript(drama.id)
   if (!script) throw new Error('缺少全局剧本，请先在「剧集」里跑全局分析')
   const digest = buildDigest(drama, script, params.eps)
-  const prompt = buildPrompt(digest, params.targetSec, params.prompt)
-  const body = {
-    model: cfg.model,
-    temperature: 0.7,
-    max_tokens: NARRATION_MAX_TOKENS,
-    stream: true,
-    stream_options: { include_usage: true },
-    messages: [
-      { role: 'system', content: '你是短剧解说文案高手，只输出 JSON，不输出其它内容。' },
-      { role: 'user', content: prompt }
-    ]
-  }
+  const prompt = buildPrompt(digest, params.targetSec, params.rate ?? rate, params.prompt)
+  const system = '你是短剧解说文案高手，只输出 JSON，不输出其它内容。'
   let r: StreamResult
-  try {
-    r = await streamChat(cfg, body, '解说文案', signal)
-  } catch (err) {
-    // 思考烧光输出预算（finish_reason=length 且正文为空）：降低推理强度重试一次
-    if ((err as { finishReason?: string | null }).finishReason !== 'length' || signal?.aborted) throw err
+  if (isGoogleNative(cfg)) {
+    r = await streamNative(
+      cfg,
+      [{ text: prompt }],
+      { maxOutputTokens: NARRATION_MAX_TOKENS, thinkingConfig: { thinkingLevel: 'low' }, responseMimeType: 'application/json' },
+      '解说文案',
+      system,
+      signal
+    )
+  } else {
+    const body = {
+      model: cfg.model,
+      temperature: 0.7,
+      max_tokens: NARRATION_MAX_TOKENS,
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt }
+      ]
+    }
     try {
-      r = await streamChat(cfg, { ...body, reasoning_effort: 'low' }, '解说文案', signal)
-    } catch {
-      ;(err as Error).message += '（已尝试降低推理强度重试，仍失败）'
-      throw err
+      r = await streamChat(cfg, body, '解说文案', signal)
+    } catch (err) {
+      // 思考烧光输出预算（finish_reason=length 且正文为空）：降低推理强度重试一次
+      if ((err as { finishReason?: string | null }).finishReason !== 'length' || signal?.aborted) throw err
+      try {
+        r = await streamChat(cfg, { ...body, reasoning_effort: 'low' }, '解说文案', signal)
+      } catch {
+        ;(err as Error).message += '（已尝试降低推理强度重试，仍失败）'
+        throw err
+      }
     }
   }
   const parsed = extractJson(r.text) as Record<string, unknown>
@@ -114,9 +135,10 @@ export async function generateNarrationScript(
   const segments: NarrationSegment[] = []
   raw.forEach((o, i) => {
     const text = String(o.text ?? '').trim()
-    const epN = Number(o.epN)
-    if (!text || !Number.isFinite(epN)) return
+    const epN = Math.round(Number(o.epN))
+    const epId = idByN.get(epN)
     const dur = durByN.get(epN) || 0
+    if (!text || !Number.isFinite(epN) || !epId || dur <= 1) return
     let tin = Math.max(0, Math.min(Number(o.in) || 0, dur - 1))
     let tout = Math.max(tin + 1, Math.min(Number(o.out) || tin + 5, dur))
     tin = Math.round(tin * 10) / 10
@@ -125,7 +147,7 @@ export async function generateNarrationScript(
       id: `ns-${stamp}-${i}-${Math.random().toString(36).slice(2, 6)}`,
       text: text.slice(0, 200),
       epN,
-      epId: idByN.get(epN) || '',
+      epId,
       in: tin,
       out: tout,
       role: String(o.role ?? '剧情').slice(0, 8),
@@ -262,6 +284,29 @@ export function buildNarrationCopyText(drama: Drama, cut: NarrationCut): string 
   ].join('\n\n')
 }
 
+function narrationSegCacheFile(
+  epFile: string,
+  epSize: number,
+  clipIn: number,
+  audioDur: number,
+  audioFile: string,
+  ratio: string,
+  speedFactor: number
+): string {
+  const dir = path.join(cacheDir(), 'narration-seg-cache')
+  fs.mkdirSync(dir, { recursive: true })
+  let audioSig = ''
+  try {
+    const st = fs.statSync(audioFile)
+    audioSig = `${st.size}:${st.mtimeMs}`
+  } catch {
+    audioSig = '0'
+  }
+  const key = `${epFile}|${epSize}|${clipIn.toFixed(3)}|${audioDur.toFixed(3)}|${audioFile}|${audioSig}|${ratio}|${speedFactor.toFixed(4)}`
+  const hash = crypto.createHash('sha1').update(key).digest('hex').slice(0, 20)
+  return path.join(dir, `nseg-${hash}.mp4`)
+}
+
 /** 将已配音的解说分段与对应剧集画面对齐合成为纯净 MP4（无硬字幕/无 BGM），并同步输出 .srt 与 _文案.txt。 */
 export async function renderNarrationCut(
   drama: Drama,
@@ -297,15 +342,24 @@ export async function renderNarrationCut(
 
       const epDur = ep.duration && ep.duration > 0 ? ep.duration : seg.out
       let clipIn = Math.max(0, seg.in)
+      let speedFactor = 1
       let vf = baseVf
       if (epDur - clipIn < audioDur) {
         if (epDur >= audioDur) {
           clipIn = Math.max(0, epDur - audioDur)
         } else {
           clipIn = 0
-          const factor = Math.min(4, audioDur / Math.max(0.5, epDur))
-          vf = `setpts=${factor.toFixed(4)}*PTS,${baseVf}`
+          speedFactor = Math.min(4, audioDur / Math.max(0.5, epDur))
+          vf = `setpts=${speedFactor.toFixed(4)}*PTS,${baseVf}`
         }
+      }
+
+      const cachedSeg = narrationSegCacheFile(ep.file, ep.size, clipIn, audioDur, seg.audioFile!, ratio, speedFactor)
+      if (fileExists(cachedSeg) && fs.statSync(cachedSeg).size > 1024) {
+        segFiles.push(cachedSeg)
+        onProgress(Math.round(((i + 1) / readySegs.length) * 90))
+        onLog?.(`复用解说片段缓存 ${i + 1}/${readySegs.length}（第 ${seg.epN} 集 ${clipIn.toFixed(1)}s + ${audioDur.toFixed(1)}s）`)
+        continue
       }
 
       const fadeOutStart = Math.max(0, audioDur - 0.04).toFixed(3)
@@ -356,7 +410,12 @@ export async function renderNarrationCut(
         8000,
         signal
       )
-      segFiles.push(tmpSeg)
+      try {
+        fs.copyFileSync(tmpSeg, cachedSeg)
+        segFiles.push(cachedSeg)
+      } catch {
+        segFiles.push(tmpSeg)
+      }
       onProgress(Math.round(((i + 1) / readySegs.length) * 90))
       onLog?.(`渲染解说片段 ${i + 1}/${readySegs.length}（第 ${seg.epN} 集 ${clipIn.toFixed(1)}s + ${audioDur.toFixed(1)}s）`)
     }

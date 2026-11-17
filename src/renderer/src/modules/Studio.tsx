@@ -1456,6 +1456,8 @@ function ProjectList(): ReactElement {
             const st = d.global?.status ?? 'idle'
             const readyN = (d.cuts ?? []).filter((c) => c.status === 'ready').length
             const totalN = (d.cuts ?? []).length
+            const narrationReady = (d.narrations ?? []).filter((n) => n.status === 'ready').length
+            const narrationTotal = (d.narrations ?? []).length
             const replicaReady = (d.replicas ?? []).filter((r) => r.status === 'ready').length
             const replicaTotal = (d.replicas ?? []).length
             const totalHl = d.episodes.reduce((s, e) => s + (e.candidates?.length ?? 0), 0)
@@ -1501,6 +1503,14 @@ function ProjectList(): ReactElement {
                   <span>
                     引流成片：<b style={{ color: readyN > 0 ? 'var(--accent)' : undefined }}>{readyN}</b> / {totalN} 条就绪
                   </span>
+                  {narrationTotal > 0 && (
+                    <>
+                      <span>·</span>
+                      <span>
+                        解说：<b style={{ color: narrationReady > 0 ? '#06b6d4' : undefined }}>{narrationReady}</b> / {narrationTotal}
+                      </span>
+                    </>
+                  )}
                   {replicaTotal > 0 && (
                     <>
                       <span>·</span>

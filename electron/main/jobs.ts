@@ -667,7 +667,7 @@ async function pump(): Promise<void> {
           if (mode === 'full') {
             const cfg = getEffectiveTextModel()
             const params = job.narrationParams ?? { targetSec: cut.targetSec }
-            const r = await generateNarrationScript(drama, params, cfg, signal)
+            const r = await generateNarrationScript(drama, params, cfg, cut.rate, signal)
             cut.title = r.title
             cut.hookHeadline = r.hookHeadline
             cut.publishCopy = r.publishCopy
@@ -698,6 +698,9 @@ async function pump(): Promise<void> {
           }
         }
 
+        if (mode === 'revoice' || mode === 'render') {
+          cut.revision = (cut.revision || 1) + 1
+        }
         cut.status = 'rendering'
         cut.pct = mode === 'render' ? 0 : 55
         if (current) current.pct = cut.pct
