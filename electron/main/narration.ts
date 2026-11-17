@@ -3,11 +3,14 @@ import path from 'path'
 import type { Drama, GenerateNarrationParams, GlobalScript, ModelCfg, NarrationCut, NarrationSegment, TtsCfg } from '../../src/shared/types'
 import { cacheDir } from './db'
 import { readGlobalScript } from './global'
-import { extractJson, streamChat } from './llm'
+import { extractJson, streamChat, type StreamResult } from './llm'
 import { ffmpegBin, run } from './media'
 import { synthesizeSpeech, ttsCacheKey } from './tts'
 
 const CHARS_PER_SEC = 4.5
+
+// 推理模型的思考 token 与正文共享 max_tokens 预算，预算太小会整段烧在思考上（finish_reason=length、正文 0 token）
+const NARRATION_MAX_TOKENS = 65536
 
 export function narrationDir(dramaId: string, cutId: string): string {
   return path.join(cacheDir(), 'narration', dramaId, cutId)
@@ -77,22 +80,30 @@ export async function generateNarrationScript(
   if (!script) throw new Error('缺少全局剧本，请先在「剧集」里跑全局分析')
   const digest = buildDigest(drama, script, params.eps)
   const prompt = buildPrompt(digest, params.targetSec, params.prompt)
-  const r = await streamChat(
-    cfg,
-    {
-      model: cfg.model,
-      temperature: 0.7,
-      max_tokens: 8000,
-      stream: true,
-      stream_options: { include_usage: true },
-      messages: [
-        { role: 'system', content: '你是短剧解说文案高手，只输出 JSON，不输出其它内容。' },
-        { role: 'user', content: prompt }
-      ]
-    },
-    '解说文案',
-    signal
-  )
+  const body = {
+    model: cfg.model,
+    temperature: 0.7,
+    max_tokens: NARRATION_MAX_TOKENS,
+    stream: true,
+    stream_options: { include_usage: true },
+    messages: [
+      { role: 'system', content: '你是短剧解说文案高手，只输出 JSON，不输出其它内容。' },
+      { role: 'user', content: prompt }
+    ]
+  }
+  let r: StreamResult
+  try {
+    r = await streamChat(cfg, body, '解说文案', signal)
+  } catch (err) {
+    // 思考烧光输出预算（finish_reason=length 且正文为空）：降低推理强度重试一次
+    if ((err as { finishReason?: string | null }).finishReason !== 'length' || signal?.aborted) throw err
+    try {
+      r = await streamChat(cfg, { ...body, reasoning_effort: 'low' }, '解说文案', signal)
+    } catch {
+      ;(err as Error).message += '（已尝试降低推理强度重试，仍失败）'
+      throw err
+    }
+  }
   const parsed = extractJson(r.text) as Record<string, unknown>
   const raw = Array.isArray(parsed.segments) ? (parsed.segments as Record<string, unknown>[]) : []
   const durByN = new Map(drama.episodes.map((e) => [e.n, e.duration || 0]))
