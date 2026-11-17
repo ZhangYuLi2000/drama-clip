@@ -10,11 +10,14 @@ import type {
   Drama,
   Episode,
   GenerateCutParams,
+  GenerateNarrationParams,
   ModelCfg,
+  NarrationCut,
   ReplicaSettings,
   ReplicaTask,
   ScanFile,
-  ScanResult
+  ScanResult,
+  TtsCfg
 } from '../../src/shared/types'
 import { findDrama, getLibrary, saveLibrary } from './db'
 import { globalDir, readGlobalScript } from './global'
@@ -25,6 +28,7 @@ import {
   enqueue,
   enqueueGenerateCut,
   enqueueGlobal,
+  enqueueNarration,
   enqueueRegenerateCut,
   enqueueReplica,
   enqueueRenderCut,
@@ -35,7 +39,8 @@ import {
 import { fileExists } from './media'
 import { readReplicaEdl } from './replica-engine'
 import { cleanupCutFiles, syncCutCopyFiles } from './render'
-import { getSettings, saveSettings } from './settings'
+import { narrationDir } from './narration'
+import { getSettings, getTtsSettings, saveSettings } from './settings'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.avi', '.flv', '.ts', '.m4v', '.wmv', '.webm'])
 
@@ -130,7 +135,9 @@ const MIME: Record<string, string> = {
   '.flv': 'video/x-flv',
   '.ts': 'video/mp2t',
   '.wmv': 'video/x-ms-wmv',
-  '.jpg': 'image/jpeg'
+  '.jpg': 'image/jpeg',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg'
 }
 
 export function registerMediaProtocol(): void {
@@ -146,6 +153,11 @@ export function registerMediaProtocol(): void {
     const allowed = getLibrary().dramas.some(
       (d) =>
         (d.cuts ?? []).some((c) => c.output && path.normalize(c.output) === norm) ||
+        (d.narrations ?? []).some(
+          (nc) =>
+            (nc.fullAudio && path.normalize(nc.fullAudio) === norm) ||
+            nc.segments.some((s) => s.audioFile && path.normalize(s.audioFile) === norm)
+        ) ||
         (d.replicas ?? []).some(
           (r) =>
             (r.output && path.normalize(r.output) === norm) || path.normalize(r.clipFile) === norm
@@ -401,6 +413,100 @@ export function registerIpc(): void {
     return ok(null)
   })
 
+  ipcMain.handle('narration:create', (_e, payload: unknown) => {
+    const { dramaId, params } = (payload ?? {}) as { dramaId?: string; params?: GenerateNarrationParams }
+    if (typeof dramaId !== 'string' || !params) return fail('参数错误')
+    const drama = findDrama(dramaId)
+    if (!drama) return fail('短剧不存在')
+    const tts = getTtsSettings()
+    const targetSec = Math.max(30, Math.min(600, Math.round(params.targetSec || 120)))
+    const cut: NarrationCut = {
+      id: `nc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      title: '新解说',
+      hookHeadline: '',
+      publishCopy: '',
+      voice: params.voice?.trim() || tts.voice,
+      ttsModel: tts.model,
+      rate: params.rate ?? tts.rate,
+      targetSec,
+      segments: [],
+      status: 'draft',
+      revision: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    drama.narrations = [cut, ...(drama.narrations ?? [])]
+    saveLibrary()
+    broadcastLibrary()
+    if (!enqueueNarration(dramaId, cut.id, 'full', undefined, { ...params, targetSec })) return fail('任务入队失败')
+    return ok({ narrationId: cut.id })
+  })
+
+  ipcMain.handle('narration:update', (_e, payload: unknown) => {
+    const { dramaId, narrationId, title, hookHeadline, publishCopy, segments } = (payload ?? {}) as {
+      dramaId?: string
+      narrationId?: string
+      title?: string
+      hookHeadline?: string
+      publishCopy?: string
+      segments?: { id: string; text?: string; in?: number; out?: number; role?: string }[]
+    }
+    if (typeof dramaId !== 'string' || typeof narrationId !== 'string') return fail('参数错误')
+    const drama = findDrama(dramaId)
+    const cut = drama?.narrations?.find((c) => c.id === narrationId)
+    if (!drama || !cut) return fail('解说方案不存在')
+    if (typeof title === 'string') cut.title = title.slice(0, 40)
+    if (typeof hookHeadline === 'string') cut.hookHeadline = hookHeadline.slice(0, 24)
+    if (typeof publishCopy === 'string') cut.publishCopy = publishCopy.slice(0, 160)
+    if (Array.isArray(segments)) {
+      for (const su of segments) {
+        const seg = cut.segments.find((s) => s.id === su.id)
+        if (!seg) continue
+        if (typeof su.text === 'string' && su.text.trim() && su.text !== seg.text) {
+          seg.text = su.text.trim().slice(0, 200)
+          seg.status = 'pending'
+          seg.error = undefined
+        }
+        const dur = drama.episodes.find((e) => e.n === seg.epN)?.duration || 0
+        if (typeof su.in === 'number') seg.in = Math.round(Math.max(0, Math.min(su.in, dur - 1)) * 10) / 10
+        if (typeof su.out === 'number') seg.out = Math.round(Math.max(seg.in + 1, Math.min(su.out, dur)) * 10) / 10
+        if (typeof su.role === 'string') seg.role = su.role.slice(0, 8)
+      }
+    }
+    cut.updatedAt = Date.now()
+    saveLibrary()
+    broadcastLibrary()
+    return ok(null)
+  })
+
+  ipcMain.handle('narration:revoice', (_e, payload: unknown) => {
+    const { dramaId, narrationId, segmentId } = (payload ?? {}) as { dramaId?: string; narrationId?: string; segmentId?: string }
+    if (typeof dramaId !== 'string' || typeof narrationId !== 'string') return fail('参数错误')
+    if (!enqueueNarration(dramaId, narrationId, 'revoice', typeof segmentId === 'string' ? segmentId : undefined)) {
+      return fail('解说方案不存在或已在队列中')
+    }
+    return ok(null)
+  })
+
+  ipcMain.handle('narration:delete', (_e, payload: unknown) => {
+    const { dramaId, narrationId } = (payload ?? {}) as { dramaId?: string; narrationId?: string }
+    if (typeof dramaId !== 'string' || typeof narrationId !== 'string') return fail('参数错误')
+    const drama = findDrama(dramaId)
+    if (!drama || !drama.narrations) return fail('解说方案不存在')
+    const idx = drama.narrations.findIndex((c) => c.id === narrationId)
+    if (idx < 0) return fail('解说方案不存在')
+    fs.rmSync(narrationDir(dramaId, narrationId), { recursive: true, force: true })
+    drama.narrations.splice(idx, 1)
+    saveLibrary()
+    broadcastLibrary()
+    return ok(null)
+  })
+
+  ipcMain.handle('narration:open-output', (_e, file: unknown) => {
+    if (typeof file === 'string' && fileExists(file)) shell.showItemInFolder(file)
+    return ok(null)
+  })
+
   ipcMain.handle('job:stop', (_e, dramaId?: unknown) => {
     return ok(stopTasks(typeof dramaId === 'string' && dramaId ? dramaId : undefined))
   })
@@ -538,6 +644,12 @@ export function registerIpc(): void {
     const t = cleanCfg(p.text)
     if (g) clean.global = g
     if (t) clean.text = t
+    if (p.tts) {
+      const out: Partial<TtsCfg> = { ...(cleanCfg(p.tts) ?? {}) }
+      if (typeof p.tts.voice === 'string') out.voice = p.tts.voice.trim()
+      if (typeof p.tts.rate === 'number' && p.tts.rate >= 0.5 && p.tts.rate <= 2) out.rate = Math.round(p.tts.rate * 100) / 100
+      clean.tts = out
+    }
     if (Array.isArray(p.styles)) clean.styles = p.styles as CutStyleConfig[]
     if (p.replica) {
       const r = p.replica

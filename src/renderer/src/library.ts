@@ -7,6 +7,7 @@ import type {
   CutStyle,
   Drama,
   GenerateCutParams,
+  GenerateNarrationParams,
   GlobalScript,
   JobInfo,
   JobLogEntry,
@@ -15,6 +16,13 @@ import type {
   ReplicaEdlRow,
   ScanResult
 } from '../../shared/types'
+
+export interface NarrationUpdatePatch {
+  title?: string
+  hookHeadline?: string
+  publishCopy?: string
+  segments?: { id: string; text?: string; in?: number; out?: number; role?: string }[]
+}
 
 interface LibraryState {
   ready: boolean
@@ -44,6 +52,11 @@ interface LibraryState {
   renderCut: (dramaId: string, cutId: string) => Promise<void>
   deleteCut: (dramaId: string, cutId: string) => Promise<void>
   openOutput: (file: string) => Promise<void>
+  createNarration: (dramaId: string, params: GenerateNarrationParams) => Promise<{ narrationId: string }>
+  updateNarration: (dramaId: string, narrationId: string, patch: NarrationUpdatePatch) => Promise<void>
+  revoiceNarration: (dramaId: string, narrationId: string, segmentId?: string) => Promise<void>
+  deleteNarration: (dramaId: string, narrationId: string) => Promise<void>
+  openNarrationOutput: (file: string) => Promise<void>
   stopTasks: (dramaId?: string) => Promise<{ cleared: number }>
   clearLogs: () => Promise<void>
   loadSettings: () => Promise<void>
@@ -133,6 +146,26 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   },
   openOutput: async (file) => {
     await call<null>('cut:open-output', file)
+  },
+  createNarration: async (dramaId, params) => {
+    const r = await call<{ narrationId: string }>('narration:create', { dramaId, params })
+    await get().refresh()
+    return r
+  },
+  updateNarration: async (dramaId, narrationId, patch) => {
+    await call<null>('narration:update', { dramaId, narrationId, ...patch })
+    await get().refresh()
+  },
+  revoiceNarration: async (dramaId, narrationId, segmentId) => {
+    await call<null>('narration:revoice', { dramaId, narrationId, segmentId })
+    await get().refresh()
+  },
+  deleteNarration: async (dramaId, narrationId) => {
+    await call<null>('narration:delete', { dramaId, narrationId })
+    await get().refresh()
+  },
+  openNarrationOutput: async (file) => {
+    await call<null>('narration:open-output', file)
   },
   stopTasks: async (dramaId) => {
     const r = await call<{ cleared: number }>('job:stop', dramaId)

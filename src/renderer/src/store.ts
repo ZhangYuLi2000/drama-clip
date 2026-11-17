@@ -39,6 +39,7 @@ interface StoreState {
   selectedCutId: string | null
   studioTab: StudioTab
   selectedReplicaId: string | null
+  selectedNarrationId: string | null
   importOpen: boolean
   q: string
   themeMode: ThemeMode
@@ -52,6 +53,7 @@ interface Actions {
   selectCut: (cutId: string | null) => void
   setStudioTab: (tab: StudioTab) => void
   selectReplica: (replicaId: string | null) => void
+  selectNarration: (narrationId: string | null) => void
   openReplicaTab: (dramaId: string) => void
   setImportOpen: (open: boolean) => void
   setQ: (q: string) => void
@@ -85,6 +87,7 @@ export const useStore = create<StoreState & Actions>()((set, get) => ({
   selectedCutId: null,
   studioTab: 'cuts',
   selectedReplicaId: null,
+  selectedNarrationId: null,
   importOpen: false,
   q: '',
   themeMode: initMode,
@@ -97,17 +100,18 @@ export const useStore = create<StoreState & Actions>()((set, get) => ({
   },
   openDrama: (dramaId) => {
     withViewTransition(() => {
-      set({ screen: 'studio', selectedDramaId: dramaId, selectedCutId: null, studioTab: 'cuts', selectedReplicaId: null })
+      set({ screen: 'studio', selectedDramaId: dramaId, selectedCutId: null, studioTab: 'cuts', selectedReplicaId: null, selectedNarrationId: null })
     })
   },
   backToProjects: () => {
     withViewTransition(() => {
-      set({ screen: 'studio', selectedDramaId: null, selectedCutId: null, selectedReplicaId: null })
+      set({ screen: 'studio', selectedDramaId: null, selectedCutId: null, selectedReplicaId: null, selectedNarrationId: null })
     })
   },
   selectCut: (selectedCutId) => set({ selectedCutId }),
   setStudioTab: (studioTab) => set({ studioTab }),
   selectReplica: (selectedReplicaId) => set({ selectedReplicaId }),
+  selectNarration: (selectedNarrationId) => set({ selectedNarrationId }),
   openReplicaTab: (dramaId) => {
     withViewTransition(() => {
       set({ screen: 'studio', selectedDramaId: dramaId, studioTab: 'replica' })

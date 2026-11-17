@@ -2,11 +2,12 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { DEFAULT_CUT_STYLES } from '../../src/shared/types'
-import type { AiSettings, AiSettingsPatch, CutStyleConfig, ModelCfg, ReplicaSettings } from '../../src/shared/types'
+import type { AiSettings, AiSettingsPatch, CutStyleConfig, ModelCfg, ReplicaSettings, TtsCfg } from '../../src/shared/types'
 
 const DEFAULTS: AiSettings = {
   global: { baseUrl: 'http://127.0.0.1:3425/v1', apiKey: '', model: 'wandapi/gemini-4-hydrogen' },
   text: { baseUrl: '', apiKey: '', model: '' },
+  tts: { baseUrl: 'https://dashscope.aliyuncs.com', apiKey: '', model: 'qwen-audio-3.1-tts-flash', voice: 'longshu_v3.1', rate: 1.1 },
   replica: {
     indexFps: 12,
     audio: 'source',
@@ -26,6 +27,7 @@ let file = ''
 let settings: AiSettings = {
   global: { ...DEFAULTS.global },
   text: { ...DEFAULTS.text },
+  tts: { ...DEFAULTS.tts },
   replica: { ...DEFAULTS.replica },
   styles: DEFAULTS.styles.map((s) => ({ ...s, roles: [...s.roles] }))
 }
@@ -61,6 +63,7 @@ function migrate(parsed: unknown): AiSettings {
   return {
     global: { ...DEFAULTS.global, ...((p.global as object) ?? {}) },
     text: { ...DEFAULTS.text, ...((p.text as object) ?? {}) },
+    tts: { ...DEFAULTS.tts, ...((p.tts as object) ?? {}) },
     replica: { ...DEFAULTS.replica, ...((p.replica as object) ?? {}) },
     styles: normalizeStyles(p.styles)
   }
@@ -74,6 +77,7 @@ export function initSettings(): void {
     settings = {
       global: { ...DEFAULTS.global },
       text: { ...DEFAULTS.text },
+      tts: { ...DEFAULTS.tts },
       replica: { ...DEFAULTS.replica },
       styles: DEFAULTS.styles.map((s) => ({ ...s, roles: [...s.roles] }))
     }
@@ -102,6 +106,7 @@ export function saveSettings(patch: AiSettingsPatch): AiSettings {
   settings = {
     global: { ...settings.global, ...(patch.global ?? {}) },
     text: { ...settings.text, ...(patch.text ?? {}) },
+    tts: { ...settings.tts, ...(patch.tts ?? {}) },
     replica: { ...settings.replica, ...(patch.replica ?? {}) },
     styles: patch.styles ? normalizeStyles(patch.styles) : settings.styles
   }
@@ -113,4 +118,8 @@ export function saveSettings(patch: AiSettingsPatch): AiSettings {
 
 export function getReplicaSettings(): ReplicaSettings {
   return settings.replica
+}
+
+export function getTtsSettings(): TtsCfg {
+  return settings.tts
 }

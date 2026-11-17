@@ -18,7 +18,8 @@ import {
   IconSliders,
   IconStop,
   IconBolt,
-  IconVideo
+  IconVideo,
+  IconVolume
 } from '../icons'
 import {
   Alert,
@@ -39,7 +40,7 @@ import {
   Tabs,
   Tag
 } from 'antd'
-import type { CutMode, CutStyle, CutStyleConfig, Drama, GlobalScript, PromoCut } from '../../../shared/types'
+import type { CutMode, CutStyle, CutStyleConfig, Drama, GlobalScript, NarrationCut, PromoCut } from '../../../shared/types'
 import { DEFAULT_CUT_STYLES, withPublishTags } from '../../../shared/types'
 import { findDrama, fmtSec, useLibrary } from '../library'
 import { toast, useStore } from '../store'
@@ -47,6 +48,7 @@ import ReviewPlayer from '../ReviewPlayer'
 import type { ReviewSegment, SeekRequest } from '../ReviewPlayer'
 import { ReplicaCreateForm, ReplicaWorkspace } from './Replica'
 import type { ReplicaFormHandle } from './Replica'
+import NarrationWorkspace from './NarrationWorkspace'
 
 const STYLE_COLOR: Record<string, string> = {
   auto: 'default',
@@ -233,15 +235,17 @@ function NewCutModal({
   d: Drama
   open: boolean
   onClose: () => void
-  initialMode?: CutMode | 'replica'
+  initialMode?: CutMode | 'replica' | 'narration'
 }): ReactElement {
   const generateCut = useLibrary((s) => s.generateCut)
+  const createNarration = useLibrary((s) => s.createNarration)
+  const ttsVoice = useLibrary((s) => s.settings?.tts?.voice ?? 'longshu_v3.1')
   const pickVideoFile = useLibrary((s) => s.pickVideoFile)
   const styles = useLibrary((s) => s.settings?.styles ?? DEFAULT_CUT_STYLES)
   const goto = useStore((s) => s.goto)
   const analyzed = d.global?.status === 'done'
 
-  const [mode, setMode] = useState<CutMode | 'replica'>('independent')
+  const [mode, setMode] = useState<CutMode | 'replica' | 'narration'>('independent')
   const [replicaBusy, setReplicaBusy] = useState(false)
   const replicaFormRef = useRef<ReplicaFormHandle>(null)
 
@@ -253,11 +257,13 @@ function NewCutModal({
   const [ratio, setRatio] = useState<'9:16' | '16:9'>('9:16')
   const [count, setCount] = useState(1)
   const [prompt, setPrompt] = useState('')
+  const [narrationTarget, setNarrationTarget] = useState(120)
+  const [narrationPrompt, setNarrationPrompt] = useState('')
   const [refVideoPath, setRefVideoPath] = useState('')
   const [refCopy, setRefCopy] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const changeMode = (nextMode: CutMode | 'replica'): void => {
+  const changeMode = (nextMode: CutMode | 'replica' | 'narration'): void => {
     setMode(nextMode)
     if (nextMode === 'hook-matrix' && count < 2) setCount(3)
     if (nextMode === 'viral-clone') setCount(1)
@@ -273,6 +279,18 @@ function NewCutModal({
 
   const submit = (): void => {
     if (mode === 'replica') return
+    if (mode === 'narration') {
+      setBusy(true)
+      createNarration(d.id, { targetSec: narrationTarget, prompt: narrationPrompt.trim() || undefined })
+        .then(() => {
+          toast('已加入解说稿生成队列')
+          setNarrationPrompt('')
+          onClose()
+        })
+        .catch((e: unknown) => toast(e instanceof Error ? e.message : '发起失败', 'info'))
+        .finally(() => setBusy(false))
+      return
+    }
     if (mode === 'viral-clone' && !refVideoPath && !refCopy.trim() && !prompt.trim()) {
       toast('请选择参考视频，或填写参考文案 / 套用下方爆款结构', 'info')
       return
@@ -315,11 +333,13 @@ function NewCutModal({
       okText={
         mode === 'replica'
           ? '开始重拼'
-          : mode === 'hook-matrix'
-            ? `生成 ${Math.max(2, count)} 条测试`
-            : mode === 'viral-clone'
-              ? '开始对标复刻'
-              : `生成 ${count} 条成片`
+          : mode === 'narration'
+            ? '生成解说稿'
+            : mode === 'hook-matrix'
+              ? `生成 ${Math.max(2, count)} 条测试`
+              : mode === 'viral-clone'
+                ? '开始对标复刻'
+                : `生成 ${count} 条成片`
       }
       cancelText="取消"
       confirmLoading={mode === 'replica' ? replicaBusy : busy}
@@ -328,11 +348,12 @@ function NewCutModal({
       <Segmented
         block
         value={mode}
-        onChange={(v) => changeMode(v as CutMode | 'replica')}
+        onChange={(v) => changeMode(v as CutMode | 'replica' | 'narration')}
         options={[
           { value: 'independent', label: '标准智剪', icon: <IconBolt />, disabled: !analyzed },
           { value: 'hook-matrix', label: '多钩子测试', icon: <IconFlask />, disabled: !analyzed },
           { value: 'viral-clone', label: '对标爆款', icon: <IconFlame />, disabled: !analyzed },
+          { value: 'narration', label: '解说成片', icon: <IconVolume />, disabled: !analyzed },
           { value: 'replica', label: '溯源重拼', icon: <IconImport /> }
         ]}
         style={{ marginBottom: 6 }}
@@ -341,12 +362,13 @@ function NewCutModal({
         {mode === 'independent' && 'AI 自动挑选高冲突主线，生成独立引流切片。'}
         {mode === 'hook-matrix' && '同一条主线故事，自动搭配多个不同的前 3 秒开场用于投流测试。'}
         {mode === 'viral-clone' && '上传参考视频或套用爆款结构，AI 提取节拍后 1:1 复刻到本剧。'}
+        {mode === 'narration' && 'AI 通读全剧写解说稿，龙书音色逐段配音，可编辑文案与试听（视频合成即将推出）。'}
         {mode === 'replica' &&
           '导入本剧剪辑产物作参考，逐帧溯源出处后用原片原画幅、原生帧率、原声对白重拼干净成片（无水印/无字幕/无镜像）。'}
         {!analyzed && ' 全局分析未完成，前三种智剪模式暂不可用；溯源重拼不依赖分析。'}
       </p>
 
-      {mode !== 'replica' && (
+      {mode !== 'replica' && mode !== 'narration' && (
         <>
           <div className="dw-field-grid is-compact" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
             <div className="dw-field">
@@ -478,6 +500,39 @@ function NewCutModal({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="例如：重点突出女主亮明身份打脸反派，把第 6 集的耳光放最前面做钩子"
+          />
+        </>
+      )}
+
+      {mode === 'narration' && (
+        <>
+          <div className="dw-field-grid is-compact" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+            <div className="dw-field">
+              <span className="dw-field-label">目标时长</span>
+              <div className="dw-field-control">
+                <Select
+                  value={narrationTarget}
+                  onChange={setNarrationTarget}
+                  options={[60, 90, 120, 180, 300, 480].map((v) => ({ value: v, label: `${v / 60} 分钟` }))}
+                />
+              </div>
+            </div>
+            <div className="dw-field">
+              <span className="dw-field-label">配音音色</span>
+              <div className="dw-field-control">
+                <Input value={ttsVoice} disabled />
+              </div>
+            </div>
+          </div>
+          <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
+            音色与语速在「设置 · 解说配音模型」配置（默认龙书·沉稳磁性男）。需先完成全局分析并填写 TTS API Key。
+          </p>
+          <div className="dw-field-label">补充要求（可选）</div>
+          <Input.TextArea
+            className="dw-auto-textarea"
+            value={narrationPrompt}
+            onChange={(e) => setNarrationPrompt(e.target.value)}
+            placeholder="例如：聚焦陈峰揭穿出轨主线，开场用露营抓包做钩子，结尾留悬念引导看正片"
           />
         </>
       )}
@@ -969,6 +1024,14 @@ const REPLICA_STATUS_LABEL = {
   fail: '失败'
 } as const
 
+const NARRATION_STATUS_LABEL: Record<NarrationCut['status'], string> = {
+  draft: '待生成',
+  generating: '写稿中',
+  voicing: '配音中',
+  ready: '已就绪',
+  fail: '失败'
+}
+
 function DramaStudio({ d }: { d: Drama }): ReactElement {
   const backToProjects = useStore((s) => s.backToProjects)
   const selectedCutId = useStore((s) => s.selectedCutId)
@@ -981,11 +1044,11 @@ function DramaStudio({ d }: { d: Drama }): ReactElement {
 
   const [analyzeOpen, setAnalyzeOpen] = useState(false)
   const [newCutOpen, setNewCutOpen] = useState(false)
-  const [newCutInitialMode, setNewCutInitialMode] = useState<CutMode | 'replica' | undefined>(undefined)
+  const [newCutInitialMode, setNewCutInitialMode] = useState<CutMode | 'replica' | 'narration' | undefined>(undefined)
   const [scriptOpen, setScriptOpen] = useState(false)
   const [rescanning, setRescanning] = useState(false)
 
-  const openNewCut = (mode?: CutMode | 'replica'): void => {
+  const openNewCut = (mode?: CutMode | 'replica' | 'narration'): void => {
     setNewCutInitialMode(mode)
     setNewCutOpen(true)
   }

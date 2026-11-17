@@ -27,6 +27,14 @@ export function initDb(): void {
             cut.error = hasOutput ? undefined : '应用重启导致渲染中断，可点击重新渲染'
           }
         }
+        for (const nc of d.narrations ?? []) {
+          if (nc.status === 'generating' || nc.status === 'voicing' || nc.status === 'draft') {
+            const hasAudio = nc.segments.some((s) => s.status === 'ready' && s.audioFile && fs.existsSync(s.audioFile))
+            nc.status = hasAudio ? 'ready' : 'fail'
+            nc.pct = hasAudio ? 100 : undefined
+            nc.error = hasAudio ? undefined : '应用重启导致任务中断，可点击重试'
+          }
+        }
         for (const rep of d.replicas ?? []) {
           if (rep.status === 'queue' || rep.status === 'indexing' || rep.status === 'tracing' || rep.status === 'cutting') {
             rep.status = rep.output ? 'ready' : 'fail'

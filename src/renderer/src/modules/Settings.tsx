@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import { IconTrash, IconPlus } from '../icons'
 import { AutoComplete, Button, Form, Input, InputNumber, Select, Space, Switch, Tag } from 'antd'
 import { DEFAULT_CUT_STYLES } from '../../../shared/types'
-import type { CutStyleConfig, ModelCfg, ReplicaSettings } from '../../../shared/types'
+import type { CutStyleConfig, ModelCfg, ReplicaSettings, TtsCfg } from '../../../shared/types'
 import { useLibrary } from '../library'
 import { toast } from '../store'
 import { CRF_TIP, ParamTip, RADIUS_TIP } from '../paramTips'
@@ -21,6 +21,20 @@ const TEXT_OPTIONS = [
 ]
 
 const EMPTY: ModelCfg = { baseUrl: '', apiKey: '', model: '' }
+
+const EMPTY_TTS: TtsCfg = { baseUrl: 'https://dashscope.aliyuncs.com', apiKey: '', model: 'qwen-audio-3.1-tts-flash', voice: 'longshu_v3.1', rate: 1.1 }
+
+const TTS_OPTIONS = [
+  { value: 'qwen-audio-3.1-tts-flash', label: 'qwen-audio-3.1-tts-flash（百炼·推荐）' },
+  { value: 'qwen-audio-3.0-tts-flash', label: 'qwen-audio-3.0-tts-flash（百炼）' },
+  { value: 'cosyvoice-v3-flash', label: 'cosyvoice-v3-flash（百炼·高表现力）' }
+]
+
+const VOICE_OPTIONS = [
+  { value: 'longshu_v3.1', label: 'longshu_v3.1 · 龙书 沉稳磁性男' },
+  { value: 'xunanchuan_v3.1', label: 'xunanchuan_v3.1 · 许南川 磁性叙事男' },
+  { value: 'baianran_v3.1', label: 'baianran_v3.1 · 白安然 低沉浑厚女' }
+]
 
 function ModelFields({
   extra,
@@ -69,9 +83,11 @@ export default function Settings(): ReactElement {
   const saveSettings = useLibrary((s) => s.saveSettings)
   const [global, setGlobal] = useState<ModelCfg>(EMPTY)
   const [text, setText] = useState<ModelCfg>(EMPTY)
+  const [tts, setTts] = useState<TtsCfg>(EMPTY_TTS)
   const [replica, setReplica] = useState<ReplicaSettings | null>(null)
   const [styles, setStyles] = useState<CutStyleConfig[]>(DEFAULT_CUT_STYLES)
   const [saving, setSaving] = useState(false)
+  const [savingTts, setSavingTts] = useState(false)
   const [savingReplica, setSavingReplica] = useState(false)
   const [savingStyles, setSavingStyles] = useState(false)
 
@@ -79,6 +95,7 @@ export default function Settings(): ReactElement {
     if (settings) {
       setGlobal(settings.global)
       setText(settings.text)
+      setTts(settings.tts ?? EMPTY_TTS)
       setReplica(settings.replica)
       setStyles(settings.styles?.length ? settings.styles : DEFAULT_CUT_STYLES)
     }
@@ -112,6 +129,14 @@ export default function Settings(): ReactElement {
       .then(() => toast('叙事基调风格已保存'))
       .catch((e: unknown) => toast(e instanceof Error ? e.message : '保存失败', 'info'))
       .finally(() => setSavingStyles(false))
+  }
+
+  const saveTts = (): void => {
+    setSavingTts(true)
+    saveSettings({ tts })
+      .then(() => toast('解说配音设置已保存'))
+      .catch((e: unknown) => toast(e instanceof Error ? e.message : '保存失败', 'info'))
+      .finally(() => setSavingTts(false))
   }
 
   const patchReplica = (p: Partial<ReplicaSettings>): void => {
@@ -195,10 +220,55 @@ export default function Settings(): ReactElement {
         </div>
       </Form>
 
+      <div className="dw-panel" style={{ marginTop: 16 }}>
+        <div className="dw-panel-head">
+          <span className="dw-panel-title">3. 解说配音模型（TTS）</span>
+          <Space size={8} style={{ flex: 'none' }}>
+            <Tag color="cyan" style={{ marginInlineEnd: 0 }}>解说成片</Tag>
+            <Button type="primary" size="small" loading={savingTts} onClick={saveTts}>
+              保存配音设置
+            </Button>
+          </Space>
+        </div>
+        <p className="dw-sub" style={{ marginTop: 0, marginBottom: 12 }}>
+          负责「解说成片」逐段配音。默认百炼 qwen-audio-3.1-tts-flash + 龙书（沉稳磁性男声），需填写百炼 API Key。
+        </p>
+        <Form layout="vertical">
+          <ModelFields
+            extra="百炼非实时语音合成端点，默认 https://dashscope.aliyuncs.com"
+            value={tts}
+            onChange={(v) => setTts({ ...tts, ...v })}
+            options={TTS_OPTIONS}
+            urlPlaceholder="https://dashscope.aliyuncs.com"
+          />
+        </Form>
+        <div className="dw-field-grid" style={{ marginTop: 12 }}>
+          <div className="dw-field">
+            <span className="dw-field-label">音色 voice</span>
+            <div className="dw-field-control">
+              <AutoComplete
+                value={tts.voice}
+                onChange={(v) => setTts({ ...tts, voice: v })}
+                options={VOICE_OPTIONS}
+                placeholder="longshu_v3.1"
+              />
+            </div>
+            <span className="dw-field-hint">须与所选模型匹配（_v3.1 配 3.1 模型）</span>
+          </div>
+          <div className="dw-field">
+            <span className="dw-field-label">语速</span>
+            <div className="dw-field-control">
+              <InputNumber min={0.5} max={2} step={0.05} value={tts.rate} onChange={(v) => setTts({ ...tts, rate: v ?? 1.1 })} />
+            </div>
+            <span className="dw-field-hint">解说推荐 1.1x</span>
+          </div>
+        </div>
+      </div>
+
       {replica && (
         <div className="dw-panel" style={{ marginTop: 16 }}>
           <div className="dw-panel-head">
-            <span className="dw-panel-title">3. 溯源重拼引擎（本地指纹溯源，无需模型/API）</span>
+            <span className="dw-panel-title">4. 溯源重拼引擎（本地指纹溯源，无需模型/API）</span>
             <Space size={8} style={{ flex: 'none' }}>
               <Tag style={{ marginInlineEnd: 0 }}>本地引擎</Tag>
               <Button type="primary" size="small" loading={savingReplica} onClick={saveReplica}>
@@ -319,7 +389,7 @@ export default function Settings(): ReactElement {
 
       <div className="dw-panel" style={{ marginTop: 16 }}>
         <div className="dw-panel-head">
-          <span className="dw-panel-title">4. 叙事基调风格配置（可选 · 支持自定义）</span>
+          <span className="dw-panel-title">5. 叙事基调风格配置（可选 · 支持自定义）</span>
           <Space size={8} style={{ flex: 'none' }}>
             <Button
               size="small"

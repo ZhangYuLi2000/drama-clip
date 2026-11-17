@@ -35,9 +35,15 @@ export interface ModelCfg {
   model: string
 }
 
+export interface TtsCfg extends ModelCfg {
+  voice: string
+  rate: number
+}
+
 export interface AiSettings {
   global: ModelCfg
   text: ModelCfg
+  tts: TtsCfg
   replica: ReplicaSettings
   styles: CutStyleConfig[]
 }
@@ -45,6 +51,7 @@ export interface AiSettings {
 export type AiSettingsPatch = {
   global?: Partial<ModelCfg>
   text?: Partial<ModelCfg>
+  tts?: Partial<TtsCfg>
   replica?: Partial<ReplicaSettings>
   styles?: CutStyleConfig[]
 }
@@ -215,6 +222,55 @@ export interface GenerateCutParams {
   refCopy?: string
 }
 
+// ---------------------------------------------------------------- 解说成片
+
+export type NarrationStatus = 'draft' | 'generating' | 'voicing' | 'ready' | 'fail'
+export type NarrationSegStatus = 'pending' | 'voicing' | 'ready' | 'fail'
+
+export interface NarrationSegment {
+  id: string
+  text: string
+  epN: number
+  epId: string
+  in: number
+  out: number
+  role: string
+  reason: string
+  audioFile?: string
+  durationSec?: number
+  status: NarrationSegStatus
+  error?: string
+}
+
+export interface NarrationCut {
+  id: string
+  title: string
+  hookHeadline: string
+  publishCopy: string
+  voice: string
+  ttsModel: string
+  rate: number
+  targetSec: number
+  segments: NarrationSegment[]
+  status: NarrationStatus
+  pct?: number
+  error?: string
+  fullAudio?: string
+  totalAudioSec?: number
+  tokens?: number
+  revision: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface GenerateNarrationParams {
+  targetSec: number
+  voice?: string
+  rate?: number
+  prompt?: string
+  eps?: string
+}
+
 export interface Drama {
   id: string
   title: string
@@ -224,6 +280,7 @@ export interface Drama {
   synthesis?: DramaSynthesis
   global?: DramaGlobal
   cuts?: PromoCut[]
+  narrations?: NarrationCut[]
   replicas?: ReplicaTask[]
   replicaIndex?: ReplicaIndexState
   /** 剧级自定义话题标签，统一追加到该剧所有引流发布文案末尾 */
@@ -332,7 +389,7 @@ export interface Library {
   dramas: Drama[]
 }
 
-export type JobKind = 'probe' | 'thumb' | 'shots' | 'global' | 'generate-cut' | 'render-cut' | 'replica'
+export type JobKind = 'probe' | 'thumb' | 'shots' | 'global' | 'generate-cut' | 'render-cut' | 'replica' | 'narration'
 
 export interface JobInfo {
   kind: JobKind
@@ -340,6 +397,7 @@ export interface JobInfo {
   episodeId: string
   cutId?: string
   replicaId?: string
+  narrationId?: string
   label: string
   pct: number
 }

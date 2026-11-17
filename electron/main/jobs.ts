@@ -1,14 +1,15 @@
 import { BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import type { CutStyle, GenerateCutParams, JobInfo, JobKind, JobLogEntry, JobLogState } from '../../src/shared/types'
+import type { CutStyle, GenerateCutParams, GenerateNarrationParams, JobInfo, JobKind, JobLogEntry, JobLogState } from '../../src/shared/types'
 import { allEpisodes, cacheDir, findDrama, findEpisode, getLibrary, saveLibrary } from './db'
 import { analyzeViralBenchmark, generateHookMatrixCuts, generatePromoCut, regeneratePromoCut } from './director'
 import { runGlobalAnalysis, type GlobalRange } from './global'
 import { detectShots, fileExists, makeThumb, probe } from './media'
 import { cleanupCutFiles, renderPromoCut } from './render'
 import { runReplicaTask } from './replica-engine'
-import { getCutStyleMeta, getEffectiveTextModel, getSettings } from './settings'
+import { generateNarrationScript, voiceNarrationSegments } from './narration'
+import { getCutStyleMeta, getEffectiveTextModel, getSettings, getTtsSettings } from './settings'
 
 interface Job {
   kind: JobKind
@@ -25,6 +26,10 @@ interface Job {
   regenInstruction?: string
   regenStyle?: CutStyle
   regenTargetSec?: number
+  narrationId?: string
+  narrationMode?: 'full' | 'revoice'
+  segmentId?: string
+  narrationParams?: GenerateNarrationParams
 }
 
 const queue: Job[] = []
@@ -68,6 +73,7 @@ function labelOf(kind: JobKind, n: number): string {
   if (kind === 'global') return '全局分幕分析'
   if (kind === 'generate-cut') return 'AI 大师编排切片'
   if (kind === 'replica') return '爆款复刻'
+  if (kind === 'narration') return 'AI 解说成片'
   return '渲染引流成片'
 }
 
@@ -210,6 +216,29 @@ export function enqueueReplica(dramaId: string, replicaId: string, recutOnly = f
   return true
 }
 
+export function enqueueNarration(
+  dramaId: string,
+  narrationId: string,
+  mode: 'full' | 'revoice' = 'full',
+  segmentId?: string,
+  params?: GenerateNarrationParams
+): boolean {
+  const drama = findDrama(dramaId)
+  const cut = drama?.narrations?.find((c) => c.id === narrationId)
+  if (!drama || !cut) return false
+  if (queue.some((j) => j.kind === 'narration' && j.narrationId === narrationId)) return false
+  if (current && current.kind === 'narration' && current.narrationId === narrationId) return false
+  cut.status = mode === 'full' ? 'generating' : 'voicing'
+  cut.pct = 0
+  cut.error = undefined
+  saveLibrary()
+  emit()
+  queue.push({ kind: 'narration', dramaId, episodeId: '', narrationId, narrationMode: mode, segmentId, narrationParams: params })
+  jobLog('info', `加入队列：${mode === 'full' ? 'AI 解说成片' : '解说重配'}「${cut.title || '新解说'}」（${drama.title}）`)
+  void pump()
+  return true
+}
+
 export function stopTasks(dramaId?: string): { cleared: number } {
   let cleared = 0
   for (let i = queue.length - 1; i >= 0; i--) {
@@ -231,6 +260,13 @@ export function stopTasks(dramaId?: string): { cleared: number } {
         cut.status = cut.output && fileExists(cut.output) ? 'ready' : 'fail'
         cut.pct = undefined
         cut.error = '已手动终止'
+      }
+    }
+    for (const nc of d.narrations ?? []) {
+      if (nc.status === 'generating' || nc.status === 'voicing') {
+        nc.status = nc.segments.some((s) => s.status === 'ready') ? 'ready' : 'fail'
+        nc.pct = undefined
+        nc.error = '已手动终止'
       }
     }
     for (const rep of d.replicas ?? []) {
@@ -592,6 +628,77 @@ async function pump(): Promise<void> {
         task.stageNote = undefined
         task.error = signal.aborted || msg === '已取消' ? '已手动终止' : msg
         task.updatedAt = Date.now()
+        saveLibrary()
+        if (signal.aborted || msg === '已取消') {
+          jobLog('warn', `${label} 已手动终止`)
+        } else {
+          failCount++
+          jobLog('error', `${label} 失败：${msg}`)
+        }
+      }
+      current = null
+      currentAbort = null
+      emit()
+      continue
+    }
+
+    if (job.kind === 'narration') {
+      const drama = findDrama(job.dramaId)
+      const cut = drama?.narrations?.find((c) => c.id === job.narrationId)
+      if (!drama || !cut) continue
+      const isRevoice = job.narrationMode === 'revoice'
+      const label = isRevoice ? `解说重配「${cut.title}」` : `AI 解说成片《${drama.title}》`
+      current = { kind: 'narration', dramaId: job.dramaId, episodeId: '', narrationId: cut.id, label, pct: 0 }
+      cut.status = isRevoice ? 'voicing' : 'generating'
+      cut.pct = 0
+      cut.error = undefined
+      saveLibrary()
+      jobLog('info', `开始：${label}`)
+      emit()
+      try {
+        const ttsCfg = getTtsSettings()
+        if (!isRevoice) {
+          const cfg = getEffectiveTextModel()
+          const params = job.narrationParams ?? { targetSec: cut.targetSec }
+          const r = await generateNarrationScript(drama, params, cfg, signal)
+          cut.title = r.title
+          cut.hookHeadline = r.hookHeadline
+          cut.publishCopy = r.publishCopy
+          cut.segments = r.segments
+          cut.tokens = r.tokens
+          cut.status = 'voicing'
+          cut.pct = 5
+          saveLibrary()
+          jobLog('info', `解说稿生成完成：「${r.title}」${r.segments.length} 段（${r.tokens} tokens），开始逐段配音`)
+          emit()
+        }
+        await voiceNarrationSegments(
+          drama.id,
+          cut,
+          ttsCfg,
+          (pct) => {
+            cut.pct = isRevoice ? pct : 5 + Math.round(pct * 0.95)
+            if (current) current.pct = cut.pct
+            saveLibrary()
+            emit()
+          },
+          (msg) => jobLog('info', msg),
+          signal,
+          isRevoice ? job.segmentId : undefined
+        )
+        cut.status = cut.segments.some((s) => s.status === 'ready') ? 'ready' : 'fail'
+        cut.pct = 100
+        cut.error = cut.status === 'fail' ? '所有解说段配音失败' : undefined
+        cut.updatedAt = Date.now()
+        saveLibrary()
+        doneCount++
+        jobLog('info', `${label} 完成：${cut.segments.filter((s) => s.status === 'ready').length}/${cut.segments.length} 段配音 · ${cut.totalAudioSec ?? 0}s`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        cut.status = cut.segments.some((s) => s.status === 'ready') ? 'ready' : 'fail'
+        cut.pct = undefined
+        cut.error = signal.aborted || msg === '已取消' ? '已手动终止' : msg
+        cut.updatedAt = Date.now()
         saveLibrary()
         if (signal.aborted || msg === '已取消') {
           jobLog('warn', `${label} 已手动终止`)
