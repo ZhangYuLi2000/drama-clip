@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol } from 'electron'
 import path from 'path'
-import { initDb } from './db'
+import { flushLibrary, initDb } from './db'
 import { registerIpc, registerMediaProtocol } from './ipc'
 import { repairMissingMedia } from './jobs'
 import { initSettings } from './settings'
@@ -103,6 +103,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+app.on('will-quit', () => flushLibrary())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

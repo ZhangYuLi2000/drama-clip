@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 const INVOKE_CHANNELS = [
   'get-app-info',
   'select-directory',
+  'library:snapshot',
   'library:get',
   'library:job',
   'library:running',

@@ -11,8 +11,7 @@ import type {
   GlobalScript,
   JobInfo,
   JobLogEntry,
-  JobLogState,
-  Library,
+  LibrarySnapshot,
   ReplicaEdlRow,
   ScanResult
 } from '../../shared/types'
@@ -71,6 +70,26 @@ interface LibraryState {
   selectVideoFile: () => Promise<{ canceled: boolean; file: string }>
 }
 
+let inflight: Promise<void> | null = null
+let queued: Promise<void> | null = null
+
+// 同一时刻只跑一次刷新；进行中再来的请求合并成紧随其后的一次，保证调用方拿到操作后的最新状态
+function coalesce(run: () => Promise<void>): Promise<void> {
+  if (!inflight) {
+    inflight = run().finally(() => {
+      inflight = null
+    })
+    return inflight
+  }
+  if (!queued) {
+    queued = inflight.then(() => {
+      queued = null
+      return coalesce(run)
+    })
+  }
+  return queued
+}
+
 async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
   const api = window.electronAPI
   if (!api) throw new Error('请在 Electron 应用内使用本功能')
@@ -90,22 +109,21 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   refresh: async () => {
     const api = window.electronAPI
     if (!api) return
-    try {
-      const lib = await call<Library>('library:get')
-      const job = await call<JobInfo | null>('library:job')
-      const running = await call<number>('library:running')
-      const logState = await call<JobLogState>('library:logs')
-      set({
-        ready: true,
-        dramas: lib.dramas,
-        job,
-        running,
-        logs: logState.logs,
-        logStats: { done: logState.done, failed: logState.failed }
-      })
-    } catch {
-      set({ ready: true })
-    }
+    await coalesce(async () => {
+      try {
+        const snap = await call<LibrarySnapshot>('library:snapshot')
+        set({
+          ready: true,
+          dramas: snap.library.dramas,
+          job: snap.job,
+          running: snap.running,
+          logs: snap.logs.logs,
+          logStats: { done: snap.logs.done, failed: snap.logs.failed }
+        })
+      } catch {
+        set({ ready: true })
+      }
+    })
   },
   scan: (dir) => call<ScanResult>('library:scan', dir),
   pickVideoFile: () => call<string>('select-reference-video'),
