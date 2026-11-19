@@ -32,21 +32,42 @@ export function throttle(fn: () => void, waitMs: number): Throttled {
   return call
 }
 
-// 窗口期内的多次调用只在窗口结束时执行一次（不因后续调用而顺延）
-export function debounceFixed(fn: () => void, waitMs: number): Throttled {
+// 延迟合并写入：窗口期内的多次请求合并为一次写入；写入失败时保留待写状态并定时重试，
+// flush 会同步补写尚未成功落盘的内容
+export function deferredWriter(
+  write: () => void,
+  waitMs: number,
+  retryMs: number,
+  onError: (err: unknown) => void
+): Throttled {
   let timer: ReturnType<typeof setTimeout> | null = null
-  const call = (): void => {
-    if (timer) return
+  let dirty = false
+  const attempt = (): boolean => {
+    try {
+      write()
+      dirty = false
+      return true
+    } catch (err) {
+      onError(err)
+      return false
+    }
+  }
+  const arm = (ms: number): void => {
     timer = setTimeout(() => {
       timer = null
-      fn()
-    }, waitMs)
+      if (dirty && !attempt()) arm(retryMs)
+    }, ms)
+  }
+  const call = (): void => {
+    dirty = true
+    if (!timer) arm(waitMs)
   }
   call.flush = (): void => {
-    if (!timer) return
-    clearTimeout(timer)
-    timer = null
-    fn()
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    if (dirty) attempt()
   }
   return call
 }

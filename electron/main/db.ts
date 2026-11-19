@@ -2,7 +2,7 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import type { Drama, Episode, Library } from '../../src/shared/types'
-import { debounceFixed } from './throttle'
+import { deferredWriter } from './throttle'
 
 let dbPath = ''
 let lib: Library = { version: 1, dramas: [] }
@@ -78,6 +78,7 @@ export function getLibrary(): Library {
 }
 
 const SAVE_DELAY_MS = 250
+const SAVE_RETRY_MS = 2000
 
 function writeLibrary(): void {
   if (!dbPath) return
@@ -86,13 +87,9 @@ function writeLibrary(): void {
   fs.renameSync(tmp, dbPath)
 }
 
-const scheduleSave = debounceFixed(() => {
-  try {
-    writeLibrary()
-  } catch (err) {
-    console.error('[db] 媒体库保存失败', err)
-  }
-}, SAVE_DELAY_MS)
+const scheduleSave = deferredWriter(writeLibrary, SAVE_DELAY_MS, SAVE_RETRY_MS, (err) =>
+  console.error('[db] 媒体库保存失败，稍后重试', err)
+)
 
 // 进度回调里会高频调用：合并为最多每 250ms 落盘一次，退出前由 flushLibrary 兜底
 export function saveLibrary(): void {
