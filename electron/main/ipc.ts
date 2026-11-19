@@ -212,6 +212,9 @@ export function registerMediaProtocol(): void {
 }
 
 export function registerIpc(): void {
+  ipcMain.handle('library:snapshot', () =>
+    ok({ library: getLibrary(), job: currentJob(), running: runningCount(), logs: getJobLogState() })
+  )
   ipcMain.handle('library:get', () => ok(getLibrary()))
   ipcMain.handle('library:job', () => ok(currentJob()))
   ipcMain.handle('library:running', () => ok(runningCount()))

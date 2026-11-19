@@ -10,6 +10,7 @@ import { cleanupCutFiles, renderPromoCut } from './render'
 import { runReplicaTask } from './replica-engine'
 import { generateNarrationScript, renderNarrationCut, voiceNarrationSegments } from './narration'
 import { getCutStyleMeta, getEffectiveTextModel, getSettings, getTtsSettings } from './settings'
+import { throttle } from './throttle'
 
 interface Job {
   kind: JobKind
@@ -56,11 +57,12 @@ export function clearJobLogs(): void {
   failCount = 0
 }
 
-export function broadcastLibrary(): void {
+// 任务进度每跳一次都会触发，合并后渲染端最多每 120ms 刷新一次
+export const broadcastLibrary = throttle(() => {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send('library-updated')
   }
-}
+}, 120)
 
 function emit(): void {
   broadcastLibrary()

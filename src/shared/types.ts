@@ -418,6 +418,13 @@ export interface JobLogState {
   failed: number
 }
 
+export interface LibrarySnapshot {
+  library: Library
+  job: JobInfo | null
+  running: number
+  logs: JobLogState
+}
+
 export interface ScanFile {
   file: string
   fileName: string
